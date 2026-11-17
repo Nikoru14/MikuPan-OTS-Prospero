@@ -8,8 +8,15 @@ on:
         required: true
         default: '0.0.1'
 
+# The release action creates the tag and release, which a read-only token
+# cannot do.
+permissions:
+  contents: write
+
 env:
-  BUILD_TYPE: Release
+  # Debug, as the README recommends: the Release configuration has known
+  # issues. Every build step below reads this, matching the debug presets.
+  BUILD_TYPE: Debug
   BUILD_STATIC: true
 
 jobs:
