@@ -26,6 +26,10 @@ using Ini = inipp::Ini<char>;
 
 bool PathExistsNoThrow(const std::filesystem::path& path, const char *context)
 {
+#ifdef __PROSPERO__
+    (void)context;
+    return MikuPan_Ps5PathExists(path.string().c_str());
+#endif
     std::error_code error;
     const bool exists = std::filesystem::exists(path, error);
     if (error)
@@ -43,6 +47,13 @@ bool PathExistsNoThrow(const std::filesystem::path& path, const char *context)
 bool CreateDirectoriesNoThrow(const std::filesystem::path& path,
                               const char *context)
 {
+#ifdef __PROSPERO__
+    /* libc++ cannot stat on the console: an existing folder will do */
+    if (MikuPan_Ps5PathExists(path.string().c_str()))
+    {
+        return true;
+    }
+#endif
     std::error_code error;
     std::filesystem::create_directories(path, error);
     if (error)

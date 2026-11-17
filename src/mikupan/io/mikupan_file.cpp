@@ -27,6 +27,14 @@
 #include <vector>
 
 #include "mikupan/mikupan_memory.h"
+#ifdef __PROSPERO__
+#include "mikupan/debug/mikupan_logging_c.h"
+#include <cerrno>
+#include <cstdio>
+#include <dirent.h>
+#include <strings.h>
+#include <sys/stat.h>
+#endif
 
 static std::mutex missing_data_dialog_mutex;
 static std::condition_variable missing_data_dialog_cv;
@@ -99,6 +107,173 @@ static std::filesystem::path MikuPan_GetApplicationBasePath()
 static constexpr const char *kPs5DataFolder = "/data/MikuPan/";
 static constexpr const char *kPs5TitleStorageFolder = "/download0/MikuPan/";
 
+/* A file's size by opening it, or -1. On the console, std::filesystem's
+ * answers come from stat, which the title's libc may not answer as a desktop
+ * does; opening the file is what loading it does anyway. Logs what stat and
+ * fopen said when the file cannot be found, to tell the two apart. */
+static long long MikuPan_Ps5FileSize(const std::string &path)
+{
+    FILE *file = std::fopen(path.c_str(), "rb");
+    if (file != nullptr)
+    {
+        long long size = -1;
+        if (std::fseek(file, 0, SEEK_END) == 0)
+        {
+            size = std::ftell(file);
+        }
+        std::fclose(file);
+        return size;
+    }
+    const int open_error = errno;
+    struct stat info = {};
+    errno = 0;
+    const int stat_result = ::stat(path.c_str(), &info);
+    const int stat_error = errno;
+    info_log("PS5: %s: fopen failed (errno %d %s); stat = %d (errno %d), mode 0%o, size %lld",
+             path.c_str(), open_error, std::strerror(open_error), stat_result, stat_error,
+             (unsigned)info.st_mode, (long long)info.st_size);
+    return -1;
+}
+
+static void MikuPan_Ps5ListFolder(const char *folder)
+{
+    DIR *dir = opendir(folder);
+    if (dir == nullptr)
+    {
+        info_log("PS5: cannot list %s (errno %d %s)", folder, errno, std::strerror(errno));
+        return;
+    }
+    std::string names;
+    int count = 0;
+    while (struct dirent *entry = readdir(dir))
+    {
+        if (count++ < 40)
+        {
+            names += entry->d_name;
+            names += "  ";
+        }
+    }
+    closedir(dir);
+    info_log("PS5: %s holds %d entries: %s", folder, count, names.c_str());
+}
+
+extern "C" bool MikuPan_Ps5PathExists(const char *path)
+{
+    if (MikuPan_Ps5FileSize(path) >= 0)
+    {
+        return true;
+    }
+    if (DIR *dir = opendir(path))
+    {
+        closedir(dir);
+        return true;
+    }
+    return false;
+}
+
+/* The path with each part spelt as the folder spells it, ignoring case: the
+ * console's /data is case-sensitive, and disc files are often copied as
+ * img_hd.bin. A part that matches nothing keeps its own spelling. */
+static std::string MikuPan_Ps5ResolveCase(const std::string &path)
+{
+    if (MikuPan_Ps5PathExists(path.c_str()))
+    {
+        return path;
+    }
+    std::string resolved = path.empty() || path[0] != '/' ? "" : "/";
+    size_t start = resolved.size();
+    while (start < path.size())
+    {
+        size_t end = path.find('/', start);
+        if (end == std::string::npos)
+        {
+            end = path.size();
+        }
+        std::string part = path.substr(start, end - start);
+        if (!part.empty())
+        {
+            std::string candidate = resolved + part;
+            if (!MikuPan_Ps5PathExists(candidate.c_str()))
+            {
+                if (DIR *dir = opendir(resolved.empty() ? "." : resolved.c_str()))
+                {
+                    while (struct dirent *entry = readdir(dir))
+                    {
+                        if (strcasecmp(entry->d_name, part.c_str()) == 0)
+                        {
+                            candidate = resolved + entry->d_name;
+                            break;
+                        }
+                    }
+                    closedir(dir);
+                }
+            }
+            resolved = candidate;
+            if (end < path.size())
+            {
+                resolved += '/';
+            }
+        }
+        start = end + 1;
+    }
+    return resolved;
+}
+
+#endif // __PROSPERO__
+
+/* std::filesystem's existence and size checks, except on the console, where
+ * stat answers EINVAL to libc++ (MikuPan's log: "Failed to check configuration
+ * file mikupan.ini: Invalid argument") and the files are opened instead. */
+static bool MikuPan_FsExists(const std::filesystem::path &path, std::error_code &error)
+{
+#ifdef __PROSPERO__
+    error.clear();
+    return MikuPan_Ps5PathExists(path.string().c_str());
+#else
+    return std::filesystem::exists(path, error);
+#endif
+}
+
+static bool MikuPan_FsExists(const std::filesystem::path &path)
+{
+    std::error_code error;
+    return MikuPan_FsExists(path, error) && !error;
+}
+
+static bool MikuPan_FsIsRegularFile(const std::filesystem::path &path, std::error_code &error)
+{
+#ifdef __PROSPERO__
+    error.clear();
+    return MikuPan_Ps5FileSize(path.string()) >= 0;
+#else
+    return std::filesystem::is_regular_file(path, error);
+#endif
+}
+
+static uintmax_t MikuPan_FsFileSize(const std::filesystem::path &path, std::error_code &error)
+{
+#ifdef __PROSPERO__
+    const long long size = MikuPan_Ps5FileSize(path.string());
+    if (size < 0)
+    {
+        error = std::make_error_code(std::errc::no_such_file_or_directory);
+        return static_cast<uintmax_t>(-1);
+    }
+    error.clear();
+    return static_cast<uintmax_t>(size);
+#else
+    return std::filesystem::file_size(path, error);
+#endif
+}
+
+static uintmax_t MikuPan_FsFileSize(const std::filesystem::path &path)
+{
+    std::error_code error;
+    const uintmax_t size = MikuPan_FsFileSize(path, error);
+    return error ? 0 : size;
+}
+
+#ifdef __PROSPERO__
 static bool MikuPan_Ps5FolderIsWritable(const char *folder)
 {
     std::error_code ec;
@@ -160,9 +335,17 @@ static std::filesystem::path MikuPan_GetDataRoot()
     {
         std::error_code ec;
         const std::filesystem::path data_folder(kPs5DataFolder);
-        if (std::filesystem::exists(data_folder / "IMG_HD.BIN", ec))
+        if (MikuPan_FsExists(
+                MikuPan_Ps5ResolveCase(std::string(kPs5DataFolder) + "IMG_HD.BIN"), ec))
         {
             return data_folder;
+        }
+        static bool listed = false;
+        if (!listed)
+        {
+            listed = true;
+            MikuPan_Ps5ListFolder(kPs5DataFolder);
+            MikuPan_Ps5ListFolder("/app0/");
         }
     }
 #endif
@@ -280,7 +463,11 @@ static std::string MikuPan_GetDataPathString(
     }
 #endif
 
+#ifdef __PROSPERO__
+    return MikuPan_Ps5ResolveCase((MikuPan_GetDataRoot() / relative_path).generic_string());
+#else
     return (MikuPan_GetDataRoot() / relative_path).generic_string();
+#endif
 }
 
 static std::string MikuPan_NormalizeSdlAssetPathString(const std::string& path)
@@ -683,12 +870,12 @@ static bool MikuPan_DataPathExistsNoPrompt(
     }
 
     std::error_code error;
-    if (!std::filesystem::is_regular_file(data_path, error) || error)
+    if (!MikuPan_FsIsRegularFile(data_path, error) || error)
     {
         return false;
     }
 
-    const uintmax_t file_size = std::filesystem::file_size(data_path, error);
+    const uintmax_t file_size = MikuPan_FsFileSize(data_path, error);
     return !error && file_size > 0;
 }
 
@@ -812,7 +999,7 @@ void MikuPan_LoadImgHdFile()
     }
 
     auto data_path = std::filesystem::path(data_path_string);
-    if (!std::filesystem::exists(data_path))
+    if (!MikuPan_FsExists(data_path))
     {
         const auto old_root = MikuPan_GetDataRoot();
         if (MikuPan_RequestMissingDataFolderDialog(data_path))
@@ -827,7 +1014,7 @@ void MikuPan_LoadImgHdFile()
                                                                    old_root);
         }
 
-        if (!std::filesystem::exists(data_path))
+        if (!MikuPan_FsExists(data_path))
         {
             return;
         }
@@ -855,7 +1042,7 @@ void MikuPan_ReadFullFile(const char *filename, char *buffer)
 
     std::filesystem::path path_filename(filename);
 
-    if (!std::filesystem::exists(path_filename))
+    if (!MikuPan_FsExists(path_filename))
     {
         const auto old_root = MikuPan_GetDataRoot();
         if (MikuPan_RequestMissingDataFolderDialog(path_filename))
@@ -865,7 +1052,7 @@ void MikuPan_ReadFullFile(const char *filename, char *buffer)
                                                            old_root);
         }
 
-        if (!std::filesystem::exists(path_filename))
+        if (!MikuPan_FsExists(path_filename))
         {
             return;
         }
@@ -876,7 +1063,7 @@ void MikuPan_ReadFullFile(const char *filename, char *buffer)
         return;
     }
 
-    auto file_size = std::filesystem::file_size(path_filename);
+    auto file_size = MikuPan_FsFileSize(path_filename);
     std::ifstream infile(path_filename, std::ios::binary);
     infile.read(buffer, file_size);
     infile.close();
@@ -925,7 +1112,7 @@ void MikuPan_ReadFileInArchive(int sector, int size, u_int *address)
     }
 
     auto archive = std::filesystem::path(archive_string);
-    if (!std::filesystem::exists(archive))
+    if (!MikuPan_FsExists(archive))
     {
         spdlog::critical("IMG_BD.BIN not found!");
         const auto old_root = MikuPan_GetDataRoot();
@@ -941,7 +1128,7 @@ void MikuPan_ReadFileInArchive(int sector, int size, u_int *address)
                                                                  old_root);
         }
 
-        if (!std::filesystem::exists(archive))
+        if (!MikuPan_FsExists(archive))
         {
             return;
         }
@@ -978,7 +1165,7 @@ u_int MikuPan_GetDataFileSize(const char *relative_name)
     }
 
     std::error_code ec;
-    const auto size = std::filesystem::file_size(path_string, ec);
+    const auto size = MikuPan_FsFileSize(path_string, ec);
     if (ec)
     {
         return 0;
@@ -1098,7 +1285,7 @@ void MikuPan_BufferFile(int sector, int size, int64_t address)
     }
 
     auto archive = std::filesystem::path(archive_string);
-    if (!std::filesystem::exists(archive))
+    if (!MikuPan_FsExists(archive))
     {
         const auto old_root = MikuPan_GetDataRoot();
         if (MikuPan_RequestMissingDataFolderDialog(archive))
@@ -1113,7 +1300,7 @@ void MikuPan_BufferFile(int sector, int size, int64_t address)
                                                                  old_root);
         }
 
-        if (!std::filesystem::exists(archive))
+        if (!MikuPan_FsExists(archive))
         {
             return;
         }
@@ -1144,7 +1331,7 @@ u_char MikuPan_ReadFile(const char *filename, void *buffer, int size)
 {
     auto relative_path = std::filesystem::path(MikuPan_GetRelativePath(filename));
 
-    if (!std::filesystem::exists(relative_path))
+    if (!MikuPan_FsExists(relative_path))
     {
         return 0;
     }
@@ -1187,7 +1374,7 @@ u_int MikuPan_GetFileSize(const char *filename)
     }
 
     std::filesystem::path path(filename);
-    if (!std::filesystem::exists(path))
+    if (!MikuPan_FsExists(path))
     {
         const auto old_root = MikuPan_GetDataRoot();
         if (MikuPan_RequestMissingDataFolderDialog(path))
@@ -1195,13 +1382,13 @@ u_int MikuPan_GetFileSize(const char *filename)
             path = MikuPan_RebasePathAfterDataFolderSelection(path, old_root);
         }
 
-        if (!std::filesystem::exists(path))
+        if (!MikuPan_FsExists(path))
         {
             return 0;
         }
     }
 
-    return std::filesystem::file_size(path);
+    return MikuPan_FsFileSize(path);
 }
 
 bool MikuPan_ResolveCdPath(const char* path, char* buffer, size_t buffer_size)
@@ -1291,7 +1478,7 @@ bool MikuPan_ResolveCdPath(const char* path, char* buffer, size_t buffer_size)
         const std::filesystem::path relative_data_path(s);
         std::filesystem::path resolved_path =
             MikuPan_GetDataRoot() / relative_data_path;
-        if (!std::filesystem::exists(resolved_path)) {
+        if (!MikuPan_FsExists(resolved_path)) {
             if (!MikuPan_IsRequiredArchiveDataFile(relative_data_path))
             {
                 return false;
@@ -1301,7 +1488,7 @@ bool MikuPan_ResolveCdPath(const char* path, char* buffer, size_t buffer_size)
                 resolved_path = MikuPan_GetDataRoot() / relative_data_path;
             }
 
-            if (!std::filesystem::exists(resolved_path))
+            if (!MikuPan_FsExists(resolved_path))
             {
                 return false;
             }
@@ -1413,7 +1600,7 @@ u_char MikuPan_FolderExists(const char *folder)
         relative_path = relative_path.remove_filename();
     }
 
-    return std::filesystem::exists(relative_path);
+    return MikuPan_FsExists(relative_path);
 }
 
 u_char MikuPan_CreateFolder(const char *folder)

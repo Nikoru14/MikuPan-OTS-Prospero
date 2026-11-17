@@ -13,6 +13,11 @@ extern "C" {
 /// Never returns NULL. Implemented in mikupan_file.cpp.
 const char *MikuPan_GetPs5UserDirectory(void);
 
+/// Whether a file or folder exists, found by opening it: on the console,
+/// libc++'s std::filesystem gets EINVAL from stat. Implemented in
+/// mikupan_file.cpp.
+bool MikuPan_Ps5PathExists(const char *path);
+
 /// Shows a PS5 system notification (the pop-up in the top corner), and
 /// writes the same text to the log. Useful while the game has no other way
 /// to show anything on the console.
