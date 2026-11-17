@@ -56,6 +56,11 @@ set(CMAKE_C_COMPILER_LAUNCHER sh "${MIKUPAN_PS5_DIR}/tools/cc-init-array.sh")
 # Frame pointers everywhere, so the crash report (src/mikupan/mikupan_ps5.cpp)
 # can walk the stack.
 add_compile_options(-fno-omit-frame-pointer)
+# The PS5 target enables AVX2, so cglm takes its AVX path, whose loads and
+# stores need 32-byte alignment; the game's PS2 matrix types only have 16
+# (the first identity matrix faulted in sceVu0UnitMatrix). Unaligned
+# loads and stores cost nothing measurable on the console's Zen 2.
+add_compile_definitions(CGLM_ALL_UNALIGNED)
 set(CMAKE_CXX_COMPILER_LAUNCHER sh "${MIKUPAN_PS5_DIR}/tools/cc-init-array.sh")
 
 # --- RADV --------------------------------------------------------------------
