@@ -41,12 +41,16 @@ SECTIONS {
     .gcc_except_table : { *(.gcc_except_table .gcc_except_table.*) } : ro
     .rodata : { *(.rodata .rodata.*) } : ro
 
+    /* MikuPan: .got must open the RELRO segment or the console refuses to
+     * start the title (CE-107750-0); the OpenLF2 PS5 port found the same.
+     * The boilerplate's own sample has no .data.rel.ro, so its .got already
+     * came first; a C++ runtime with vtables fills .data.rel.ro. */
     . = ALIGN(CONSTANT(MAXPAGESIZE));
+    .got : { *(.got) } : relro
+    .got.plt : { *(.got.plt) } : relro
     .data.rel.ro : {
         *(.data.rel.ro .data.rel.ro.*)
     } : relro
-    .got : { *(.got) } : relro
-    .got.plt : { *(.got.plt) } : relro
     .preinit_array : {
         PROVIDE_HIDDEN(__preinit_array_start = .);
         KEEP(*(.preinit_array))

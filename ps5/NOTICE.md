@@ -8,7 +8,9 @@ MikuPan, which is licensed AGPL-3.0, as both licenses allow.
 
 Modified: `native/ps5-pie.ld` additionally defines the `__eh_frame_start`,
 `__eh_frame_end`, `__eh_frame_hdr_start` and `__eh_frame_hdr_end` markers
-that the ps5-payload-sdk's libunwind needs for C++ exceptions.
+that the ps5-payload-sdk's libunwind needs for C++ exceptions, and places
+`.got` and `.got.plt` before `.data.rel.ro` at the start of the RELRO segment,
+without which the console refuses to start the title (CE-107750-0).
 `native/app-symbols.map` makes every symbol local, not only the allocation
 operators, because the title converter accepts no exports. `native/app_crt.cpp`
 is unchanged.
