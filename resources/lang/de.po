@@ -1544,11 +1544,17 @@ msgstr "Wie schnell der rechte Stick und die Maus die Kamera drehen."
 msgid "Wider values show more of the room around Miku."
 msgstr "Größere Werte zeigen mehr vom Raum um Miku."
 
-msgid "Pull the camera in so walls, doors and furniture never block the view."
-msgstr "Zieht die Kamera heran, damit Wände, Türen und Möbel nie die Sicht versperren."
+msgid "Pull the camera in so walls, doors and large furniture never block the view. Thin props such as ropes are looked through."
+msgstr "Zieht die Kamera heran, damit Wände, Türen und große Möbel nie die Sicht versperren. Durch dünne Gegenstände wie Seile wird hindurchgesehen."
 
 msgid "Drift back behind Miku while she walks and the right stick is idle."
 msgstr "Schwenkt beim Gehen langsam hinter Miku zurück, solange der rechte Stick ruht."
 
 msgid "Click the right stick to centre the camera behind Miku. Raising the Camera Obscura aims it where the camera looks."
 msgstr "Rechten Stick drücken, um die Kamera hinter Miku zu zentrieren. Beim Heben der Camera Obscura zielt sie dorthin, wo die Kamera hinsieht."
+
+msgid "Camera Height"
+msgstr "Kamerahöhe"
+
+msgid "Raise or lower the camera. Low frames Miku from the waist, high looks down over her head."
+msgstr "Hebt oder senkt die Kamera. Niedrig zeigt Miku ab der Hüfte, hoch blickt über ihren Kopf hinweg."

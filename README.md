@@ -14,7 +14,7 @@ to **Over the Shoulder**: a modern follow camera that hangs behind Miku, orbits
 with the right stick or the mouse, pulls in against walls and furniture, and
 walks her wherever the left stick is pushed. Click the right stick to centre it
 behind her; raising the Camera Obscura aims it where the camera was looking.
-Shoulder side, distance, sensitivity, field of view, wall collision and the
+Shoulder side, distance, height, sensitivity, field of view, wall collision and the
 auto-follow drift are adjustable there and persist in `mikupan.ini` under
 `[over_shoulder_camera]`. Cutscenes, apparition events and save points keep
 their original cameras.

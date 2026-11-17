@@ -2550,6 +2550,16 @@ void MikuPan_SetOverShoulderDistance(float distance)
     mikupan_over_shoulder_distance = MikuPan_ClampFloat(distance, 250.0f, 1500.0f);
 }
 
+float MikuPan_GetOverShoulderHeight(void)
+{
+    return mikupan_over_shoulder_pivot_height;
+}
+
+void MikuPan_SetOverShoulderHeight(float height)
+{
+    mikupan_over_shoulder_pivot_height = MikuPan_ClampFloat(height, 200.0f, 900.0f);
+}
+
 float MikuPan_GetOverShoulderSensitivity(void)
 {
     return mikupan_over_shoulder_sensitivity;
