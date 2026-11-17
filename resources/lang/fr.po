@@ -1494,3 +1494,61 @@ msgstr "Utiliser les polices HD si disponibles"
 
 msgid "Use matching HD font textures when installed; otherwise use the original fonts."
 msgstr "Utiliser les textures de polices HD correspondantes si elles sont installées ; sinon, utiliser les polices originales."
+
+# --- mikupan_rml_options.cpp (camera view) ---
+msgid "Camera"
+msgstr "Caméra"
+
+msgid "Camera View"
+msgstr "Vue de la caméra"
+
+msgid "Fixed"
+msgstr "Fixe"
+
+msgid "Over the Shoulder"
+msgstr "Par-dessus l'épaule"
+
+msgid "First Person"
+msgstr "Première personne"
+
+msgid "Shoulder Side"
+msgstr "Côté de l'épaule"
+
+msgid "Camera Distance"
+msgstr "Distance de la caméra"
+
+msgid "Camera Sensitivity"
+msgstr "Sensibilité de la caméra"
+
+msgid "Camera Field of View"
+msgstr "Champ de vision de la caméra"
+
+msgid "Camera Collision"
+msgstr "Collision de la caméra"
+
+msgid "Camera Auto Follow"
+msgstr "Suivi automatique de la caméra"
+
+msgid "Fixed keeps the original cinematic angles. Over the Shoulder follows Miku from behind: the right stick or mouse looks around and the left stick walks where you push. First Person looks through her eyes."
+msgstr "Fixe conserve les angles cinématiques d'origine. Par-dessus l'épaule suit Miku de dos : le stick droit ou la souris regarde autour et le stick gauche la fait marcher dans la direction poussée. Première personne voit à travers ses yeux."
+
+msgid "Which of Miku's shoulders the camera looks over."
+msgstr "L'épaule de Miku par-dessus laquelle la caméra regarde."
+
+msgid "How far the camera hangs behind Miku."
+msgstr "Distance à laquelle la caméra se tient derrière Miku."
+
+msgid "How quickly the right stick and mouse turn the camera."
+msgstr "Vitesse à laquelle le stick droit et la souris tournent la caméra."
+
+msgid "Wider values show more of the room around Miku."
+msgstr "Des valeurs plus larges montrent davantage de la pièce autour de Miku."
+
+msgid "Pull the camera in so walls, doors and furniture never block the view."
+msgstr "Rapproche la caméra pour que murs, portes et meubles ne bloquent jamais la vue."
+
+msgid "Drift back behind Miku while she walks and the right stick is idle."
+msgstr "Revient doucement derrière Miku lorsqu'elle marche et que le stick droit est au repos."
+
+msgid "Click the right stick to centre the camera behind Miku. Raising the Camera Obscura aims it where the camera looks."
+msgstr "Cliquez le stick droit pour recentrer la caméra derrière Miku. Lever la Camera Obscura la pointe là où regarde la caméra."

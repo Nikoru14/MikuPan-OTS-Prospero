@@ -275,6 +275,34 @@ bool TryLoadConfigurationFile(const std::filesystem::path& path)
                mikupan_configuration.first_person_camera.stick_yaw_speed_deg);
     ApplyValue(ini, "first_person_camera", "stick_pitch_speed_deg",
                mikupan_configuration.first_person_camera.stick_pitch_speed_deg);
+    ApplyValue(ini, "over_shoulder_camera", "enabled",
+               mikupan_configuration.over_shoulder_camera.enabled);
+    ApplyValue(ini, "over_shoulder_camera", "side_left",
+               mikupan_configuration.over_shoulder_camera.side_left);
+    ApplyValue(ini, "over_shoulder_camera", "collision_enabled",
+               mikupan_configuration.over_shoulder_camera.collision_enabled);
+    ApplyValue(ini, "over_shoulder_camera", "auto_follow_enabled",
+               mikupan_configuration.over_shoulder_camera.auto_follow_enabled);
+    ApplyValue(ini, "over_shoulder_camera", "distance",
+               mikupan_configuration.over_shoulder_camera.distance);
+    ApplyValue(ini, "over_shoulder_camera", "pivot_height",
+               mikupan_configuration.over_shoulder_camera.pivot_height);
+    ApplyValue(ini, "over_shoulder_camera", "side",
+               mikupan_configuration.over_shoulder_camera.side);
+    ApplyValue(ini, "over_shoulder_camera", "fov_deg",
+               mikupan_configuration.over_shoulder_camera.fov_deg);
+    ApplyValue(ini, "over_shoulder_camera", "sensitivity",
+               mikupan_configuration.over_shoulder_camera.sensitivity);
+    ApplyValue(ini, "over_shoulder_camera", "stick_yaw_speed_deg",
+               mikupan_configuration.over_shoulder_camera.stick_yaw_speed_deg);
+    ApplyValue(ini, "over_shoulder_camera", "stick_pitch_speed_deg",
+               mikupan_configuration.over_shoulder_camera.stick_pitch_speed_deg);
+    ApplyValue(ini, "over_shoulder_camera", "default_pitch_deg",
+               mikupan_configuration.over_shoulder_camera.default_pitch_deg);
+    ApplyValue(ini, "over_shoulder_camera", "smoothing",
+               mikupan_configuration.over_shoulder_camera.smoothing);
+    ApplyValue(ini, "over_shoulder_camera", "turn_speed_deg",
+               mikupan_configuration.over_shoulder_camera.turn_speed_deg);
     ApplyValue(ini, "input", "selected_gamepad_index",
                mikupan_configuration.input.selected_gamepad_index);
     ApplyValue(ini, "input", "rumble_enabled",
@@ -488,6 +516,34 @@ bool TrySaveConfigurationFile(const std::filesystem::path& path)
              mikupan_configuration.first_person_camera.stick_yaw_speed_deg);
     SetValue(ini, "first_person_camera", "stick_pitch_speed_deg",
              mikupan_configuration.first_person_camera.stick_pitch_speed_deg);
+    SetValue(ini, "over_shoulder_camera", "enabled",
+             mikupan_configuration.over_shoulder_camera.enabled);
+    SetValue(ini, "over_shoulder_camera", "side_left",
+             mikupan_configuration.over_shoulder_camera.side_left);
+    SetValue(ini, "over_shoulder_camera", "collision_enabled",
+             mikupan_configuration.over_shoulder_camera.collision_enabled);
+    SetValue(ini, "over_shoulder_camera", "auto_follow_enabled",
+             mikupan_configuration.over_shoulder_camera.auto_follow_enabled);
+    SetValue(ini, "over_shoulder_camera", "distance",
+             mikupan_configuration.over_shoulder_camera.distance);
+    SetValue(ini, "over_shoulder_camera", "pivot_height",
+             mikupan_configuration.over_shoulder_camera.pivot_height);
+    SetValue(ini, "over_shoulder_camera", "side",
+             mikupan_configuration.over_shoulder_camera.side);
+    SetValue(ini, "over_shoulder_camera", "fov_deg",
+             mikupan_configuration.over_shoulder_camera.fov_deg);
+    SetValue(ini, "over_shoulder_camera", "sensitivity",
+             mikupan_configuration.over_shoulder_camera.sensitivity);
+    SetValue(ini, "over_shoulder_camera", "stick_yaw_speed_deg",
+             mikupan_configuration.over_shoulder_camera.stick_yaw_speed_deg);
+    SetValue(ini, "over_shoulder_camera", "stick_pitch_speed_deg",
+             mikupan_configuration.over_shoulder_camera.stick_pitch_speed_deg);
+    SetValue(ini, "over_shoulder_camera", "default_pitch_deg",
+             mikupan_configuration.over_shoulder_camera.default_pitch_deg);
+    SetValue(ini, "over_shoulder_camera", "smoothing",
+             mikupan_configuration.over_shoulder_camera.smoothing);
+    SetValue(ini, "over_shoulder_camera", "turn_speed_deg",
+             mikupan_configuration.over_shoulder_camera.turn_speed_deg);
     SetValue(ini, "input", "selected_gamepad_index",
              mikupan_configuration.input.selected_gamepad_index);
     SetValue(ini, "input", "rumble_enabled",

@@ -16,6 +16,7 @@
 #include "mikupan/mikupan_audio_bus.h"
 #include "mikupan/io/mikupan_controller.h"
 #include "mikupan/gameplay/mikupan_first_person.h"
+#include "mikupan/gameplay/mikupan_over_shoulder.h"
 #include "mikupan/mikupan_utils.h"
 #include "mikupan/rendering/mikupan_flashlight_dust.h"
 #include "mikupan/rendering/mikupan_gpu.h"
@@ -236,6 +237,29 @@ static void MikuPan_ApplyFirstPersonCameraConfiguration(void)
     MikuPan_FirstPersonSetEnabled(fps->enabled);
 }
 
+static void MikuPan_ApplyOverShoulderCameraConfiguration(void)
+{
+    MikuPan_ConfigOverShoulderCamera* ots =
+        &mikupan_configuration.over_shoulder_camera;
+
+    MikuPan_ConfigurationValidate();
+    mikupan_over_shoulder_side_left = ots->side_left;
+    mikupan_over_shoulder_collision_enabled = ots->collision_enabled;
+    mikupan_over_shoulder_auto_follow_enabled = ots->auto_follow_enabled;
+    mikupan_over_shoulder_distance = ots->distance;
+    mikupan_over_shoulder_pivot_height = ots->pivot_height;
+    mikupan_over_shoulder_side = ots->side;
+    mikupan_over_shoulder_fov_deg = ots->fov_deg;
+    mikupan_over_shoulder_sensitivity = ots->sensitivity;
+    mikupan_over_shoulder_stick_yaw_speed_deg = ots->stick_yaw_speed_deg;
+    mikupan_over_shoulder_stick_pitch_speed_deg = ots->stick_pitch_speed_deg;
+    mikupan_over_shoulder_default_pitch_deg = ots->default_pitch_deg;
+    mikupan_over_shoulder_smoothing = ots->smoothing;
+    mikupan_over_shoulder_turn_speed_deg = ots->turn_speed_deg;
+
+    MikuPan_OverShoulderSetEnabled(ots->enabled);
+}
+
 static void MikuPan_UiStoreRuntimeConfiguration(void)
 {
     mikupan_configuration.renderer.render.width = render_resolution_width;
@@ -290,6 +314,33 @@ static void MikuPan_UiStoreRuntimeConfiguration(void)
         mikupan_first_person_stick_yaw_speed_deg;
     mikupan_configuration.first_person_camera.stick_pitch_speed_deg =
         mikupan_first_person_stick_pitch_speed_deg;
+    mikupan_configuration.over_shoulder_camera.enabled =
+        MikuPan_OverShoulderEnabled() ? 1 : 0;
+    mikupan_configuration.over_shoulder_camera.side_left =
+        mikupan_over_shoulder_side_left ? 1 : 0;
+    mikupan_configuration.over_shoulder_camera.collision_enabled =
+        mikupan_over_shoulder_collision_enabled ? 1 : 0;
+    mikupan_configuration.over_shoulder_camera.auto_follow_enabled =
+        mikupan_over_shoulder_auto_follow_enabled ? 1 : 0;
+    mikupan_configuration.over_shoulder_camera.distance =
+        mikupan_over_shoulder_distance;
+    mikupan_configuration.over_shoulder_camera.pivot_height =
+        mikupan_over_shoulder_pivot_height;
+    mikupan_configuration.over_shoulder_camera.side = mikupan_over_shoulder_side;
+    mikupan_configuration.over_shoulder_camera.fov_deg =
+        mikupan_over_shoulder_fov_deg;
+    mikupan_configuration.over_shoulder_camera.sensitivity =
+        mikupan_over_shoulder_sensitivity;
+    mikupan_configuration.over_shoulder_camera.stick_yaw_speed_deg =
+        mikupan_over_shoulder_stick_yaw_speed_deg;
+    mikupan_configuration.over_shoulder_camera.stick_pitch_speed_deg =
+        mikupan_over_shoulder_stick_pitch_speed_deg;
+    mikupan_configuration.over_shoulder_camera.default_pitch_deg =
+        mikupan_over_shoulder_default_pitch_deg;
+    mikupan_configuration.over_shoulder_camera.smoothing =
+        mikupan_over_shoulder_smoothing;
+    mikupan_configuration.over_shoulder_camera.turn_speed_deg =
+        mikupan_over_shoulder_turn_speed_deg;
     mikupan_configuration.input.selected_gamepad_index =
         MikuPan_ControllerGetPreferredGamepadIndex();
     MikuPan_ControllerStoreBindingsToConfig();
@@ -1032,6 +1083,7 @@ void MikuPan_UiSettingsInit(void)
     MikuPan_SetShadowResolution(mikupan_configuration.renderer.shadow_resolution);
     MikuPan_ApplyThirdPersonCameraConfiguration();
     MikuPan_ApplyFirstPersonCameraConfiguration();
+    MikuPan_ApplyOverShoulderCameraConfiguration();
     MikuPan_ControllerSetPreferredGamepadIndex(mikupan_configuration.input.selected_gamepad_index);
     mikupan_configuration.input.selected_gamepad_index = MikuPan_ControllerGetPreferredGamepadIndex();
     MikuPan_ControllerLoadBindingsFromConfig();
@@ -2448,6 +2500,95 @@ int MikuPan_KeepFinderRaisedForApparitionsEnabled(void)
 void MikuPan_SetKeepFinderRaisedForApparitionsEnabled(int enabled)
 {
     mikupan_configuration.keep_finder_raised_for_apparitions = enabled ? 1 : 0;
+}
+
+/* Camera view: the original fixed angles, the over-the-shoulder follow
+ * camera, or first person.  The three are mutually exclusive. */
+int MikuPan_GetCameraViewOption(void)
+{
+    if (MikuPan_FirstPersonEnabled())
+    {
+        return MIKUPAN_CAMERA_VIEW_FIRST_PERSON;
+    }
+
+    if (MikuPan_OverShoulderEnabled())
+    {
+        return MIKUPAN_CAMERA_VIEW_OVER_SHOULDER;
+    }
+
+    return MIKUPAN_CAMERA_VIEW_FIXED;
+}
+
+void MikuPan_SelectCameraViewOption(int view)
+{
+    MikuPan_FirstPersonSetEnabled(view == MIKUPAN_CAMERA_VIEW_FIRST_PERSON);
+    MikuPan_OverShoulderSetEnabled(view == MIKUPAN_CAMERA_VIEW_OVER_SHOULDER);
+
+    if (view != MIKUPAN_CAMERA_VIEW_FIXED)
+    {
+        camera_third_person_enabled = 0;
+    }
+}
+
+int MikuPan_OverShoulderSideLeft(void)
+{
+    return mikupan_over_shoulder_side_left != 0;
+}
+
+void MikuPan_SetOverShoulderSideLeft(int left)
+{
+    mikupan_over_shoulder_side_left = left ? 1 : 0;
+}
+
+float MikuPan_GetOverShoulderDistance(void)
+{
+    return mikupan_over_shoulder_distance;
+}
+
+void MikuPan_SetOverShoulderDistance(float distance)
+{
+    mikupan_over_shoulder_distance = MikuPan_ClampFloat(distance, 250.0f, 1500.0f);
+}
+
+float MikuPan_GetOverShoulderSensitivity(void)
+{
+    return mikupan_over_shoulder_sensitivity;
+}
+
+void MikuPan_SetOverShoulderSensitivity(float sensitivity)
+{
+    mikupan_over_shoulder_sensitivity =
+        MikuPan_ClampFloat(sensitivity, 0.1f, 4.0f);
+}
+
+float MikuPan_GetOverShoulderFov(void)
+{
+    return mikupan_over_shoulder_fov_deg;
+}
+
+void MikuPan_SetOverShoulderFov(float fov_deg)
+{
+    mikupan_over_shoulder_fov_deg = MikuPan_ClampFloat(fov_deg, 40.0f, 100.0f);
+}
+
+int MikuPan_OverShoulderCollisionEnabled(void)
+{
+    return mikupan_over_shoulder_collision_enabled != 0;
+}
+
+void MikuPan_SetOverShoulderCollisionEnabled(int enabled)
+{
+    mikupan_over_shoulder_collision_enabled = enabled ? 1 : 0;
+}
+
+int MikuPan_OverShoulderAutoFollowEnabled(void)
+{
+    return mikupan_over_shoulder_auto_follow_enabled != 0;
+}
+
+void MikuPan_SetOverShoulderAutoFollowEnabled(int enabled)
+{
+    mikupan_over_shoulder_auto_follow_enabled = enabled ? 1 : 0;
 }
 
 int MikuPan_GetFontOptionCount(void)

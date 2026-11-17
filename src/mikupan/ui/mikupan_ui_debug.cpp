@@ -14,6 +14,7 @@
 #include "mikupan/mikupan_basictypes.h"
 #include "mikupan/mikupan_config.h"
 #include "mikupan/gameplay/mikupan_first_person.h"
+#include "mikupan/gameplay/mikupan_over_shoulder.h"
 #include "mikupan/rendering/mikupan_gpu.h"
 #include "mikupan/rendering/mikupan_meshcache.h"
 #include "mikupan/rendering/mikupan_profiler.h"
@@ -1936,6 +1937,61 @@ void MikuPan_UiDebugMenuRender(void)
                           8.0f, "%.2f deg/frame", 0);
 
             igTextDisabled("Left stick strafes. Right stick/mouse aims.");
+
+            igSeparatorText("Over the Shoulder");
+
+            {
+                bool ots_enabled = MikuPan_OverShoulderEnabled() != 0;
+                bool ots_left = mikupan_over_shoulder_side_left != 0;
+                bool ots_collision = mikupan_over_shoulder_collision_enabled != 0;
+                bool ots_follow = mikupan_over_shoulder_auto_follow_enabled != 0;
+
+                if (igCheckbox("Over the Shoulder Camera", &ots_enabled))
+                {
+                    MikuPan_OverShoulderSetEnabled(ots_enabled ? 1 : 0);
+                }
+
+                if (igCheckbox("OTS Left Shoulder", &ots_left))
+                {
+                    mikupan_over_shoulder_side_left = ots_left ? 1 : 0;
+                }
+
+                if (igCheckbox("OTS Camera Collision", &ots_collision))
+                {
+                    mikupan_over_shoulder_collision_enabled = ots_collision ? 1 : 0;
+                }
+
+                if (igCheckbox("OTS Auto Follow", &ots_follow))
+                {
+                    mikupan_over_shoulder_auto_follow_enabled = ots_follow ? 1 : 0;
+                }
+
+                igSliderFloat("OTS Distance", &mikupan_over_shoulder_distance,
+                              250.0f, 1500.0f, "%.0f", 0);
+                igSliderFloat("OTS Pivot Height", &mikupan_over_shoulder_pivot_height,
+                              200.0f, 900.0f, "%.0f", 0);
+                igSliderFloat("OTS Side Offset", &mikupan_over_shoulder_side, 0.0f,
+                              400.0f, "%.0f", 0);
+                igSliderFloat("OTS FOV", &mikupan_over_shoulder_fov_deg, 40.0f,
+                              100.0f, "%.1f deg", 0);
+                igSliderFloat("OTS Sensitivity", &mikupan_over_shoulder_sensitivity,
+                              0.1f, 4.0f, "%.2fx", 0);
+                igSliderFloat("OTS Stick Yaw Speed",
+                              &mikupan_over_shoulder_stick_yaw_speed_deg, 0.1f,
+                              10.0f, "%.2f deg/frame", 0);
+                igSliderFloat("OTS Stick Pitch Speed",
+                              &mikupan_over_shoulder_stick_pitch_speed_deg, 0.1f,
+                              10.0f, "%.2f deg/frame", 0);
+                igSliderFloat("OTS Default Pitch",
+                              &mikupan_over_shoulder_default_pitch_deg, -40.0f,
+                              35.0f, "%.1f deg", 0);
+                igSliderFloat("OTS Smoothing", &mikupan_over_shoulder_smoothing,
+                              0.0f, 0.9f, "%.2f", 0);
+                igSliderFloat("OTS Turn Speed", &mikupan_over_shoulder_turn_speed_deg,
+                              1.0f, 30.0f, "%.1f deg/frame", 0);
+
+                igTextDisabled("Left stick walks. Right stick/mouse orbits. R3 recentres.");
+            }
 
             igSeparatorText("Third Person");
 

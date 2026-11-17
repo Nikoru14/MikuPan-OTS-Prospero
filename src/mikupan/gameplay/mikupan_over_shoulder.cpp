@@ -1,0 +1,1052 @@
+#include "common.h"
+#include "enums.h"
+
+#include "main/glob.h"
+#include "common/ul_math.h"
+#include "ingame/map/map_ctrl.h"
+#include "ingame/map/map_htck.h"
+#include "ingame/plyr/plyr_ctl.h"
+#include "ingame/plyr/unit_ctl.h"
+#include "graphics/graph3d/sglib.h"
+#include "mikupan/io/mikupan_controller.h"
+#include "mikupan/gameplay/mikupan_first_person.h"
+#include "mikupan/gameplay/mikupan_over_shoulder.h"
+#include "os/key_cnf.h"
+#include "sce/libvu0.h"
+
+#include <math.h>
+
+#define PI 3.1415928f
+#define DEG2RAD(x) ((float)(x) * PI / 180.0f)
+
+/* Camera pitch limits.  Looking too far down lifts the camera into the low
+ * ceilings of the mansion; looking too far up drops it to the floor. */
+#define OTS_PITCH_MIN_DEG (-40.0f)
+#define OTS_PITCH_MAX_DEG (35.0f)
+
+/* Looking straight ahead from the camera this far away keeps the projected
+ * interest point stable however short the boom becomes. */
+#define OTS_LOOK_DISTANCE 1000.0f
+
+/* Collision probing along the shoulder offset and the boom. */
+#define OTS_SHOULDER_STEPS 6
+#define OTS_BOOM_STEP 30.0f
+#define OTS_BOOM_MARGIN 25.0f
+#define OTS_BOOM_EASE_OUT 0.10f
+
+/* Keep the camera between these heights above Miku's feet (world Y points
+ * down, so "above" is negative). */
+#define OTS_MIN_HEIGHT 60.0f
+#define OTS_MAX_HEIGHT 1000.0f
+
+/* Below this boom length the camera sits inside Miku's shoulder. */
+#define OTS_HIDE_MODEL_BOOM 160.0f
+
+/* Blend from the previous camera when it was close enough to be the same
+ * shot, e.g. lowering the Camera Obscura. */
+#define OTS_BLEND_FRAMES 12
+#define OTS_BLEND_MAX_DIST 1800.0f
+
+/* Frames of right-stick silence before the camera drifts back behind Miku. */
+#define OTS_AUTO_FOLLOW_DELAY 45
+#define OTS_AUTO_FOLLOW_RATE 0.03f
+#define OTS_RECENTER_RATE 0.22f
+
+/* Miku turns to face the camera over this many frames when raising the
+ * Camera Obscura, well within the 25-frame raise animation. */
+#define OTS_FINDER_TURN_FRAMES 8
+
+#define OTS_MOUSE_RAD_PER_PIXEL 0.0035f
+#define OTS_STICK_DEADZONE 24.0f
+
+int mikupan_over_shoulder_enabled = 0;
+int mikupan_over_shoulder_side_left = 0;
+int mikupan_over_shoulder_collision_enabled = 1;
+int mikupan_over_shoulder_auto_follow_enabled = 1;
+float mikupan_over_shoulder_distance = 620.0f;
+float mikupan_over_shoulder_pivot_height = 560.0f;
+float mikupan_over_shoulder_side = 150.0f;
+float mikupan_over_shoulder_fov_deg = 62.0f;
+float mikupan_over_shoulder_sensitivity = 1.0f;
+float mikupan_over_shoulder_stick_yaw_speed_deg = 3.2f;
+float mikupan_over_shoulder_stick_pitch_speed_deg = 2.2f;
+float mikupan_over_shoulder_default_pitch_deg = -8.0f;
+float mikupan_over_shoulder_smoothing = 0.5f;
+float mikupan_over_shoulder_turn_speed_deg = 9.0f;
+
+/* Owns the camera this frame / owned it last frame. */
+static int ots_active = 0;
+static int ots_was_active = 0;
+static int ots_ctrl_ran = 0;
+
+/* Orbit state. */
+static float ots_yaw = 0.0f;
+static float ots_pitch = 0.0f;
+static float ots_boom = 0.0f;
+static sceVu0FVECTOR ots_pivot = {0.0f, 0.0f, 0.0f, 1.0f};
+static int ots_pivot_valid = 0;
+
+/* The camera as it was displayed last frame, captured before the stock
+ * camera code overwrites it. */
+static sceVu0FVECTOR ots_last_p = {0.0f, 0.0f, 0.0f, 1.0f};
+static sceVu0FVECTOR ots_last_i = {0.0f, 0.0f, 0.0f, 1.0f};
+static int ots_last_valid = 0;
+
+/* Transition blend from the previous shot. */
+static int ots_blend_frames = 0;
+static sceVu0FVECTOR ots_blend_p = {0.0f, 0.0f, 0.0f, 1.0f};
+static sceVu0FVECTOR ots_blend_i = {0.0f, 0.0f, 0.0f, 1.0f};
+
+static int ots_look_idle_frames = 0;
+static int ots_recenter = 0;
+static int ots_finder_turn_frames = 0;
+static float ots_finder_turn_step = 0.0f;
+static u_char ots_prev_plyr_mode = 0xff;
+static int ots_hide_model = 0;
+
+/* ------------------------------------------------------------------------ */
+/* Small helpers                                                            */
+/* ------------------------------------------------------------------------ */
+
+static float OtsClamp(float value, float min, float max)
+{
+    if (value < min)
+    {
+        return min;
+    }
+
+    if (value > max)
+    {
+        return max;
+    }
+
+    return value;
+}
+
+static float OtsWrap(float angle)
+{
+    RotLimitChk(&angle);
+    return angle;
+}
+
+static float OtsApproach(float value, float target, float step)
+{
+    if (value < target)
+    {
+        value += step;
+
+        if (value > target)
+        {
+            value = target;
+        }
+    }
+    else if (value > target)
+    {
+        value -= step;
+
+        if (value < target)
+        {
+            value = target;
+        }
+    }
+
+    return value;
+}
+
+static void OtsCopy(sceVu0FVECTOR dst, const sceVu0FVECTOR src)
+{
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+    dst[3] = src[3];
+}
+
+static void OtsLerp(sceVu0FVECTOR dst, const sceVu0FVECTOR a,
+                    const sceVu0FVECTOR b, float t)
+{
+    dst[0] = a[0] + (b[0] - a[0]) * t;
+    dst[1] = a[1] + (b[1] - a[1]) * t;
+    dst[2] = a[2] + (b[2] - a[2]) * t;
+    dst[3] = 1.0f;
+}
+
+static float OtsDist(const sceVu0FVECTOR a, const sceVu0FVECTOR b)
+{
+    float dx = a[0] - b[0];
+    float dy = a[1] - b[1];
+    float dz = a[2] - b[2];
+
+    return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+
+static float OtsPadAxis(u_char value)
+{
+    float v = (float)value - 128.0f;
+    float av = fabsf(v);
+    float sign;
+
+    if (av <= OTS_STICK_DEADZONE)
+    {
+        return 0.0f;
+    }
+
+    sign = v < 0.0f ? -1.0f : 1.0f;
+    v = (av - OTS_STICK_DEADZONE) / (127.0f - OTS_STICK_DEADZONE);
+
+    return OtsClamp(v, 0.0f, 1.0f) * sign;
+}
+
+static float OtsSideSign(void)
+{
+    return mikupan_over_shoulder_side_left ? -1.0f : 1.0f;
+}
+
+static float OtsPitchMin(void)
+{
+    return DEG2RAD(OTS_PITCH_MIN_DEG);
+}
+
+static float OtsPitchMax(void)
+{
+    return DEG2RAD(OTS_PITCH_MAX_DEG);
+}
+
+static void OtsClampPitch(void)
+{
+    ots_pitch = OtsClamp(ots_pitch, OtsPitchMin(), OtsPitchMax());
+}
+
+static int OtsPlayerMoveMotionLocks(void)
+{
+    return (plyr_wrk.move_mot >= 1 && plyr_wrk.move_mot <= 9)
+           || plyr_wrk.move_mot == 12 || plyr_wrk.move_mot == 13;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Ownership                                                                */
+/* ------------------------------------------------------------------------ */
+
+static int OtsModeAllowsCamera(void)
+{
+    switch (plyr_wrk.mode)
+    {
+        case PMODE_NORMAL:
+        case PMODE_FINDER_IN:
+        case PMODE_FINDER_END:
+        case PMODE_MSG_DISP:
+        case PMODE_ANIME:
+        case PMODE_DMG:
+        case PMODE_PRE_DMG:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+/* Overlays that return to the same spot afterwards: keep the camera
+ * where it is behind them so closing them never cuts or swoops. */
+static int OtsIngameModeAllowsCamera(void)
+{
+    switch (ingame_wrk.mode)
+    {
+        case INGAME_MODE_NOMAL:
+        case INGAME_MODE_GET_ITEM:
+        case INGAME_MODE_MENU:
+        case INGAME_MODE_PAUSE:
+        case INGAME_MODE_SPD_MAP:
+        case INGAME_MODE_SPD_OPT:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static int OtsCanOwnCamera(void)
+{
+    if (!mikupan_over_shoulder_enabled || MikuPan_FirstPersonEnabled())
+    {
+        return 0;
+    }
+
+    if (!OtsIngameModeAllowsCamera())
+    {
+        return 0;
+    }
+
+    if (plyr_wrk.cond == 1 || plyr_wrk.cond == 2)
+    {
+        return 0;
+    }
+
+    if (dbg_wrk.cam_mode != 0)
+    {
+        return 0;
+    }
+
+    return OtsModeAllowsCamera();
+}
+
+static int OtsCanOwnGameplay(void)
+{
+    if (!mikupan_over_shoulder_enabled || MikuPan_FirstPersonEnabled())
+    {
+        return 0;
+    }
+
+    if (ingame_wrk.mode != INGAME_MODE_NOMAL)
+    {
+        return 0;
+    }
+
+    /* The pause menu keeps the normal mode but locks gameplay. */
+    if ((ingame_wrk.stts & INGAME_STTS_GAMEPLAY_LOCK) != 0)
+    {
+        return 0;
+    }
+
+    if (plyr_wrk.mode != PMODE_NORMAL)
+    {
+        return 0;
+    }
+
+    if ((plyr_wrk.sta & 0x8) != 0)
+    {
+        return 0;
+    }
+
+    if (plyr_wrk.cond == 1 || plyr_wrk.cond == 2)
+    {
+        return 0;
+    }
+
+    if (dbg_wrk.cam_mode != 0)
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Collision                                                                */
+/* ------------------------------------------------------------------------ */
+
+/* A point is blocked when it lies outside every room of the current floor
+ * or inside one of the wall, door or furniture areas Miku herself cannot
+ * walk into.  Those areas are the only collision data the game has, which
+ * keeps the camera in walkable space and therefore out of the walls. */
+static int OtsPointBlocked(const sceVu0FVECTOR p)
+{
+    sceVu0FVECTOR q;
+
+    if (p[0] < 0.0f || p[0] > 65535.0f || p[2] < 0.0f || p[2] > 65535.0f)
+    {
+        return 1;
+    }
+
+    if (GetPointRoomNo((u_short)p[0], (u_short)p[2]) == 0xff)
+    {
+        return 1;
+    }
+
+    q[0] = p[0];
+    q[1] = p[1];
+    q[2] = p[2];
+    q[3] = 1.0f;
+
+    return HitChkSegment2All(q, q, 1.0f) != 0;
+}
+
+/* Largest fraction of `offset` that can be added to `from` before the first
+ * blocked sample. */
+static float OtsFreeFraction(const sceVu0FVECTOR from, const sceVu0FVECTOR offset,
+                             int steps)
+{
+    sceVu0FVECTOR p;
+    int k;
+
+    for (k = 1; k <= steps; k++)
+    {
+        float t = (float)k / (float)steps;
+
+        p[0] = from[0] + offset[0] * t;
+        p[1] = from[1] + offset[1] * t;
+        p[2] = from[2] + offset[2] * t;
+        p[3] = 1.0f;
+
+        if (OtsPointBlocked(p))
+        {
+            return (float)(k - 1) / (float)steps;
+        }
+    }
+
+    return 1.0f;
+}
+
+/* Longest boom along `dir` (unit length) from `from` that stays clear. */
+static float OtsFreeBoom(const sceVu0FVECTOR from, const sceVu0FVECTOR dir,
+                         float length)
+{
+    sceVu0FVECTOR p;
+    float travelled = 0.0f;
+
+    while (travelled < length)
+    {
+        float next = travelled + OTS_BOOM_STEP;
+
+        if (next > length)
+        {
+            next = length;
+        }
+
+        p[0] = from[0] + dir[0] * next;
+        p[1] = from[1] + dir[1] * next;
+        p[2] = from[2] + dir[2] * next;
+        p[3] = 1.0f;
+
+        if (OtsPointBlocked(p))
+        {
+            travelled -= OTS_BOOM_MARGIN;
+            return travelled < 0.0f ? 0.0f : travelled;
+        }
+
+        travelled = next;
+    }
+
+    return length;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Camera                                                                   */
+/* ------------------------------------------------------------------------ */
+
+static void OtsTargetPivot(sceVu0FVECTOR out)
+{
+    out[0] = plyr_wrk.move_box.pos[0];
+    out[1] = plyr_wrk.move_box.pos[1] - mikupan_over_shoulder_pivot_height;
+    out[2] = plyr_wrk.move_box.pos[2];
+    out[3] = 1.0f;
+}
+
+static void OtsForward(sceVu0FVECTOR out)
+{
+    sceVu0FVECTOR rot = {ots_pitch, ots_yaw, 0.0f, 0.0f};
+
+    out[0] = 0.0f;
+    out[1] = 0.0f;
+    out[2] = 1.0f;
+    out[3] = 0.0f;
+
+    RotFvector(rot, out);
+}
+
+static void OtsShoulder(sceVu0FVECTOR out)
+{
+    sceVu0FVECTOR rot = {0.0f, ots_yaw, 0.0f, 0.0f};
+
+    out[0] = OtsSideSign() * mikupan_over_shoulder_side;
+    out[1] = 0.0f;
+    out[2] = 0.0f;
+    out[3] = 0.0f;
+
+    RotFvector(rot, out);
+}
+
+/* The camera pose for the current orbit state without any smoothing or
+ * collision, used to decide whether a transition blend makes sense. */
+static void OtsIdealCamera(sceVu0FVECTOR out_p)
+{
+    sceVu0FVECTOR pivot;
+    sceVu0FVECTOR shoulder;
+    sceVu0FVECTOR forward;
+
+    OtsTargetPivot(pivot);
+    OtsShoulder(shoulder);
+    OtsForward(forward);
+
+    out_p[0] = pivot[0] + shoulder[0] - forward[0] * mikupan_over_shoulder_distance;
+    out_p[1] = pivot[1] + shoulder[1] - forward[1] * mikupan_over_shoulder_distance;
+    out_p[2] = pivot[2] + shoulder[2] - forward[2] * mikupan_over_shoulder_distance;
+    out_p[3] = 1.0f;
+}
+
+static void OtsActivate(void)
+{
+    sceVu0FVECTOR ideal;
+
+    ots_yaw = plyr_wrk.move_box.rot[1];
+    ots_pitch = DEG2RAD(mikupan_over_shoulder_default_pitch_deg);
+    OtsClampPitch();
+    ots_boom = mikupan_over_shoulder_distance;
+    OtsTargetPivot(ots_pivot);
+    ots_pivot_valid = 1;
+    ots_look_idle_frames = OTS_AUTO_FOLLOW_DELAY;
+    ots_recenter = 0;
+    ots_finder_turn_frames = 0;
+    ots_blend_frames = 0;
+
+    OtsIdealCamera(ideal);
+
+    if (ots_last_valid
+        && OtsDist(ots_last_p, ideal) < OTS_BLEND_MAX_DIST
+        && OtsDist(ots_last_p, plyr_wrk.move_box.pos) < OTS_BLEND_MAX_DIST)
+    {
+        ots_blend_frames = OTS_BLEND_FRAMES;
+        OtsCopy(ots_blend_p, ots_last_p);
+        OtsCopy(ots_blend_i, ots_last_i);
+    }
+}
+
+static void OtsCountIdleFrame(void)
+{
+    if (ots_look_idle_frames < 100000)
+    {
+        ots_look_idle_frames++;
+    }
+}
+
+static void OtsUpdateLook(void)
+{
+    float yaw_in = 0.0f;
+    float pitch_in = 0.0f;
+    float sens = mikupan_over_shoulder_sensitivity;
+    int moved = 0;
+
+    if (pad[0].id == 0x79)
+    {
+        yaw_in = OtsPadAxis(pad[0].analog[0]);
+        pitch_in = OtsPadAxis(pad[0].analog[1]);
+    }
+
+    if (yaw_in != 0.0f)
+    {
+        ots_yaw += yaw_in * DEG2RAD(mikupan_over_shoulder_stick_yaw_speed_deg) * sens;
+        moved = 1;
+    }
+
+    if (pitch_in != 0.0f)
+    {
+        /* Stick up is a value below centre.  Make that look up by default. */
+        pitch_in = -pitch_in;
+
+        if (MikuPan_KeyProfileUsesFinderReverseY())
+        {
+            pitch_in = -pitch_in;
+        }
+
+        ots_pitch += pitch_in * DEG2RAD(mikupan_over_shoulder_stick_pitch_speed_deg) * sens;
+        moved = 1;
+    }
+
+    if (MikuPan_FinderMouseLookEnabled())
+    {
+        float mdx = 0.0f;
+        float mdy = 0.0f;
+
+        MikuPan_FinderMouseRequest();
+
+        if (MikuPan_FinderMouseConsume(&mdx, &mdy))
+        {
+            float mouse_sens =
+                MikuPan_FinderMouseSensitivity() * OTS_MOUSE_RAD_PER_PIXEL * sens;
+            float pitch = -mdy * mouse_sens;
+
+            if (MikuPan_KeyProfileUsesFinderReverseY())
+            {
+                pitch = -pitch;
+            }
+
+            ots_yaw += mdx * mouse_sens;
+            ots_pitch += pitch;
+            moved = 1;
+        }
+    }
+
+    ots_yaw = OtsWrap(ots_yaw);
+    OtsClampPitch();
+
+    if (moved)
+    {
+        ots_look_idle_frames = 0;
+        ots_recenter = 0;
+    }
+    else
+    {
+        OtsCountIdleFrame();
+    }
+}
+
+static void OtsUpdateRecenter(void)
+{
+    float delta;
+
+    if (R3_PRESSED() == 1)
+    {
+        ots_recenter = 1;
+    }
+
+    if (!ots_recenter)
+    {
+        return;
+    }
+
+    delta = OtsWrap(plyr_wrk.move_box.rot[1] - ots_yaw);
+    ots_yaw = OtsWrap(ots_yaw + delta * OTS_RECENTER_RATE);
+    ots_pitch += (DEG2RAD(mikupan_over_shoulder_default_pitch_deg) - ots_pitch)
+                 * OTS_RECENTER_RATE;
+    OtsClampPitch();
+
+    if (fabsf(delta) < DEG2RAD(0.5f))
+    {
+        ots_recenter = 0;
+    }
+}
+
+static void OtsAutoFollow(void)
+{
+    float delta;
+
+    if (!mikupan_over_shoulder_auto_follow_enabled || ots_recenter)
+    {
+        return;
+    }
+
+    if (ots_look_idle_frames < OTS_AUTO_FOLLOW_DELAY)
+    {
+        return;
+    }
+
+    /* Only while Miku is actually walking or running, and never while she
+     * is spinning round, otherwise the camera would chase her turn. */
+    if ((plyr_wrk.mvsta & 0xf) == 0 || (plyr_wrk.mvsta & 0x3000000) != 0)
+    {
+        return;
+    }
+
+    delta = OtsWrap(plyr_wrk.move_box.rot[1] - ots_yaw);
+
+    /* Walking towards the camera is a deliberate choice; leave it alone. */
+    if (fabsf(delta) > DEG2RAD(135.0f))
+    {
+        return;
+    }
+
+    ots_yaw = OtsWrap(ots_yaw + delta * OTS_AUTO_FOLLOW_RATE);
+}
+
+/* Raising the Camera Obscura: turn Miku towards where the camera looks so the
+ * viewfinder opens on what the player was looking at. */
+static void OtsHandleFinderIn(void)
+{
+    MOVE_BOX* mb = &plyr_wrk.move_box;
+
+    if (plyr_wrk.mode != PMODE_FINDER_IN)
+    {
+        ots_finder_turn_frames = 0;
+        return;
+    }
+
+    if (ots_prev_plyr_mode != PMODE_FINDER_IN)
+    {
+        float delta = OtsWrap(ots_yaw - mb->rot[1]);
+
+        ots_finder_turn_frames = OTS_FINDER_TURN_FRAMES;
+        ots_finder_turn_step = delta / (float)OTS_FINDER_TURN_FRAMES;
+
+        /* Cancel the raise animation's own slow turn; we handle it. */
+        mb->rspd[1] = 0.0f;
+
+        plyr_wrk.frot_x = OtsClamp(ots_pitch, DEG2RAD(-45.0f), DEG2RAD(45.0f));
+    }
+
+    if (ots_finder_turn_frames > 0)
+    {
+        mb->rot[1] = OtsWrap(mb->rot[1] + ots_finder_turn_step);
+        ots_finder_turn_frames--;
+    }
+}
+
+static void OtsBuildCamera(void)
+{
+    sceVu0FVECTOR target;
+    sceVu0FVECTOR shoulder;
+    sceVu0FVECTOR forward;
+    sceVu0FVECTOR back;
+    sceVu0FVECTOR start;
+    float follow;
+    float allowed;
+    float min_y;
+    float max_y;
+
+    OtsTargetPivot(target);
+
+    /* Ease the pivot so the camera lags a touch behind Miku, but snap when
+     * she is moved a long way in one frame (doors, teleports). */
+    follow = 1.0f - OtsClamp(mikupan_over_shoulder_smoothing, 0.0f, 0.9f);
+
+    if (!ots_pivot_valid || OtsDist(ots_pivot, target) > 400.0f)
+    {
+        OtsCopy(ots_pivot, target);
+        ots_pivot_valid = 1;
+    }
+    else
+    {
+        OtsLerp(ots_pivot, ots_pivot, target, follow);
+    }
+
+    OtsShoulder(shoulder);
+    OtsForward(forward);
+
+    back[0] = -forward[0];
+    back[1] = -forward[1];
+    back[2] = -forward[2];
+    back[3] = 0.0f;
+
+    if (mikupan_over_shoulder_collision_enabled)
+    {
+        float scale = OtsFreeFraction(ots_pivot, shoulder, OTS_SHOULDER_STEPS);
+
+        shoulder[0] *= scale;
+        shoulder[1] *= scale;
+        shoulder[2] *= scale;
+    }
+
+    sceVu0AddVector(start, ots_pivot, shoulder);
+    start[3] = 1.0f;
+
+    allowed = mikupan_over_shoulder_distance;
+
+    if (mikupan_over_shoulder_collision_enabled)
+    {
+        allowed = OtsFreeBoom(start, back, allowed);
+    }
+
+    /* Pull in at once so nothing ever clips, ease back out. */
+    if (allowed < ots_boom)
+    {
+        ots_boom = allowed;
+    }
+    else
+    {
+        ots_boom += (allowed - ots_boom) * OTS_BOOM_EASE_OUT;
+    }
+
+    camera.p[0] = start[0] + back[0] * ots_boom;
+    camera.p[1] = start[1] + back[1] * ots_boom;
+    camera.p[2] = start[2] + back[2] * ots_boom;
+    camera.p[3] = 1.0f;
+
+    /* World Y points down: keep the camera above the floor and under the
+     * ceiling whatever the pitch. */
+    min_y = plyr_wrk.move_box.pos[1] - OTS_MAX_HEIGHT;
+    max_y = plyr_wrk.move_box.pos[1] - OTS_MIN_HEIGHT;
+    camera.p[1] = OtsClamp(camera.p[1], min_y, max_y);
+
+    camera.i[0] = camera.p[0] + forward[0] * OTS_LOOK_DISTANCE;
+    camera.i[1] = camera.p[1] + forward[1] * OTS_LOOK_DISTANCE;
+    camera.i[2] = camera.p[2] + forward[2] * OTS_LOOK_DISTANCE;
+    camera.i[3] = 1.0f;
+
+    camera.roll = PI;
+    camera.fov = DEG2RAD(mikupan_over_shoulder_fov_deg);
+
+    plyr_wrk.prot = ots_yaw;
+
+    ots_hide_model = ots_boom < OTS_HIDE_MODEL_BOOM;
+}
+
+static void OtsApplyBlend(void)
+{
+    float t;
+
+    if (ots_blend_frames <= 0)
+    {
+        return;
+    }
+
+    t = (float)ots_blend_frames / (float)OTS_BLEND_FRAMES;
+    t = t * t;
+
+    OtsLerp(camera.p, camera.p, ots_blend_p, t);
+    OtsLerp(camera.i, camera.i, ots_blend_i, t);
+
+    if (OtsDist(camera.p, ots_pivot) < 220.0f)
+    {
+        ots_hide_model = 1;
+    }
+
+    ots_blend_frames--;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Public API                                                               */
+/* ------------------------------------------------------------------------ */
+
+int MikuPan_OverShoulderEnabled(void)
+{
+    return mikupan_over_shoulder_enabled;
+}
+
+int MikuPan_OverShoulderActive(void)
+{
+    return ots_active;
+}
+
+void MikuPan_OverShoulderSetEnabled(int enabled)
+{
+    enabled = enabled ? 1 : 0;
+
+    if (enabled && !mikupan_over_shoulder_enabled)
+    {
+        ots_was_active = 0;
+        ots_last_valid = 0;
+    }
+
+    mikupan_over_shoulder_enabled = enabled;
+
+    if (!enabled)
+    {
+        ots_active = 0;
+        ots_was_active = 0;
+        ots_hide_model = 0;
+    }
+}
+
+void MikuPan_OverShoulderToggle(void)
+{
+    MikuPan_OverShoulderSetEnabled(!mikupan_over_shoulder_enabled);
+}
+
+void MikuPan_OverShoulderBeginFrame(void)
+{
+    /* CameraMain() can hand the frame to a special camera before reaching
+     * us; treat that like any other frame we did not own. */
+    if (!ots_ctrl_ran)
+    {
+        ots_was_active = 0;
+    }
+
+    ots_ctrl_ran = 0;
+    ots_active = 0;
+    ots_hide_model = 0;
+
+    OtsCopy(ots_last_p, camera.p);
+    OtsCopy(ots_last_i, camera.i);
+    ots_last_valid = 1;
+}
+
+int MikuPan_OverShoulderCameraCtrl(void)
+{
+    ots_ctrl_ran = 1;
+
+    if (!OtsCanOwnCamera())
+    {
+        ots_active = 0;
+        ots_was_active = 0;
+        ots_finder_turn_frames = 0;
+        ots_prev_plyr_mode = plyr_wrk.mode;
+        return 0;
+    }
+
+    ots_active = 1;
+
+    if (!ots_was_active)
+    {
+        OtsActivate();
+    }
+
+    OtsHandleFinderIn();
+
+    if (OtsCanOwnGameplay())
+    {
+        OtsUpdateLook();
+        OtsUpdateRecenter();
+        OtsAutoFollow();
+    }
+    else
+    {
+        OtsCountIdleFrame();
+    }
+
+    OtsBuildCamera();
+    OtsApplyBlend();
+
+    ots_was_active = 1;
+    ots_prev_plyr_mode = plyr_wrk.mode;
+
+    return 1;
+}
+
+int MikuPan_OverShoulderMoveCtrl(MOVE_BOX* mb, sceVu0FVECTOR tv)
+{
+    float r;
+    float desired;
+    float delta;
+    float turn_step;
+    u_char run_chk;
+    sceVu0FVECTOR fr = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    tv[0] = 0.0f;
+    tv[1] = 0.0f;
+    tv[2] = 0.0f;
+    tv[3] = 0.0f;
+
+    if (!OtsCanOwnGameplay())
+    {
+        return 0;
+    }
+
+    r = GetMovePad(0);
+    run_chk = PlyrMoveStaChk(r);
+    PlyrCollisionSetInputState(r, run_chk, pad[0].an_dir[0]);
+    GetMoveSpeed(tv);
+
+    /* A quick turn is still playing out: finish it before taking new input,
+     * exactly like the original control scheme. */
+    if (plyr_wrk.mvsta & 0x3000000)
+    {
+        if (OtsPlayerMoveMotionLocks())
+        {
+            plyr_wrk.mvsta &= ~(0x8 | 0x4 | 0x2 | 0x1);
+
+            tv[0] = 0.0f;
+            tv[1] = 0.0f;
+            tv[2] = 0.0f;
+            tv[3] = 0.0f;
+        }
+
+        if (mb->loop)
+        {
+            mb->loop -= 1;
+            mb->rot[1] = OtsWrap(mb->rot[1] + mb->rspd[1]);
+            RotFvector(mb->rot, tv);
+        }
+        else
+        {
+            mb->rspd[1] = 0.0f;
+            plyr_wrk.mvsta &= ~0x3000000;
+        }
+
+        return 1;
+    }
+
+    if (r == 10.0f)
+    {
+        /* No direction held.  Scripted moves (stairs, ledges) and running on
+         * the spot with the run button keep going the way Miku faces. */
+        if ((tv[0] != 0.0f || tv[1] != 0.0f || tv[2] != 0.0f)
+            && (run_chk != 0 || (plyr_wrk.mvsta & 0xfff0) != 0))
+        {
+            RotFvector(mb->rot, tv);
+        }
+
+        return 1;
+    }
+
+    if (plyr_wrk.mvsta & 0x200000)
+    {
+        /* The animation drives the move; GetMovePad() already returned
+         * Miku's own heading. */
+        RotFvector(mb->rot, tv);
+        return 1;
+    }
+
+    /* Which way the player pushes, as seen through this camera. */
+    desired = OtsWrap(r + ots_yaw);
+
+    if (plyr_wrk.mvsta & 0x100000)
+    {
+        if ((PlyrGetStepDirection() & 1) == 0)
+        {
+            tv[2] = 0.0f;
+        }
+        else
+        {
+            tv[0] = 0.0f;
+        }
+    }
+
+    fr[1] = desired;
+    RotFvector(fr, tv);
+
+    delta = OtsWrap(desired - mb->rot[1]);
+    turn_step = DEG2RAD(mikupan_over_shoulder_turn_speed_deg);
+
+    if (fabsf(delta) > DEG2RAD(120.0f) && (plyr_wrk.mvsta & 0xfff0) == 0)
+    {
+        CngPlyrRotRapid(mb, desired);
+
+        if (OtsPlayerMoveMotionLocks())
+        {
+            tv[0] = 0.0f;
+            tv[1] = 0.0f;
+            tv[2] = 0.0f;
+            tv[3] = 0.0f;
+
+            plyr_wrk.mvsta &= ~(0x8 | 0x4 | 0x2 | 0x1);
+        }
+
+        plyr_wrk.mvsta &= ~0x800000;
+        plyr_wrk.mvsta |= 0x1000000;
+    }
+    else if (plyr_wrk.mvsta & 0xfff0)
+    {
+        plyr_wrk.mvsta &= ~(0x1000000 | 0x800000);
+    }
+    else if (fabsf(delta) > turn_step)
+    {
+        mb->rot[1] = OtsWrap(mb->rot[1] + (delta > 0.0f ? turn_step : -turn_step));
+
+        plyr_wrk.mvsta &= ~0x1000000;
+        plyr_wrk.mvsta |= 0x800000;
+    }
+    else
+    {
+        mb->rot[1] = desired;
+
+        plyr_wrk.mvsta &= ~(0x1000000 | 0x800000);
+    }
+
+    return 1;
+}
+
+int MikuPan_OverShoulderSpotMoveCtrl(void)
+{
+    float step = DEG2RAD(2.5f);
+    float pitch_target;
+    float yaw_target;
+
+    if (!OtsCanOwnGameplay())
+    {
+        return 0;
+    }
+
+    /* The flashlight follows the camera: tilt up with it (the original never
+     * tilts it below level) and swing it towards where the camera looks. */
+    pitch_target = OtsClamp(ots_pitch, 0.0f, DEG2RAD(45.0f));
+
+    if (plyr_wrk.mvsta & 0x200000)
+    {
+        yaw_target = 0.0f;
+    }
+    else
+    {
+        yaw_target = OtsClamp(OtsWrap(ots_yaw - plyr_wrk.move_box.rot[1]),
+                              DEG2RAD(-40.0f), DEG2RAD(40.0f));
+    }
+
+    plyr_wrk.spot_rot[0] = OtsApproach(plyr_wrk.spot_rot[0], pitch_target, step);
+    plyr_wrk.spot_rot[1] = OtsApproach(plyr_wrk.spot_rot[1], yaw_target, step);
+
+    return 1;
+}
+
+int MikuPan_OverShoulderOwnsMovement(void)
+{
+    return OtsCanOwnGameplay();
+}
+
+int MikuPan_OverShoulderShouldHidePlayerModel(void)
+{
+    return ots_active && ots_hide_model;
+}

@@ -40,6 +40,7 @@
 #include "mikupan/debug/mikupan_logging_c.h"
 #include "mikupan/mikupan_config.h"
 #include "mikupan/gameplay/mikupan_first_person.h"
+#include "mikupan/gameplay/mikupan_over_shoulder.h"
 #include "mikupan/gameplay/mikupan_item_icon_hud.h"
 #include "mikupan/gameplay/mikupan_point_depth.h"
 #include "mikupan/rendering/mikupan_renderer.h"
@@ -91,6 +92,12 @@ PWARP_DAT pwarp_dat[] = {
 
 int pa_radius_set = 0;
 static u_char step_direction = 0;
+
+u_char PlyrGetStepDirection(void)
+{
+    return step_direction;
+}
+
 static u_char no_photo_tm = 0;
 static u_char dmg_step = 0;
 
@@ -631,6 +638,11 @@ void PlyrSpotMoveCtrl()
     }
 
     if (MikuPan_FirstPersonShouldBlockSpotMove())
+    {
+        return;
+    }
+
+    if (MikuPan_OverShoulderSpotMoveCtrl())
     {
         return;
     }
@@ -3042,6 +3054,9 @@ void PlyrNModeMoveCtrl()
         else if (MikuPan_FirstPersonMoveCtrl(mb, tv))
         {
         }
+        else if (MikuPan_OverShoulderMoveCtrl(mb, tv))
+        {
+        }
         else if (MikuPan_KeyProfileUsesSubjectiveMove())
         {
             PlyrMovePadV(mb, tv);
@@ -3077,7 +3092,8 @@ void PlyrHitTurnChk(MOVE_BOX *mb, sceVu0FVECTOR tv)
 {
     float rot;
 
-    if (MikuPan_FirstPersonEnabled() || MikuPan_KeyProfileUsesSubjectiveMove())
+    if (MikuPan_FirstPersonEnabled() || MikuPan_KeyProfileUsesSubjectiveMove()
+        || MikuPan_OverShoulderOwnsMovement())
     {
         return;
     }
@@ -3870,7 +3886,7 @@ static u_char PlyrCollisionMoveDiv(float x, float z)
     return div;
 }
 
-static void PlyrCollisionSetInputState(float pad_rot, u_char run_state, u_char analog_dir)
+void PlyrCollisionSetInputState(float pad_rot, u_char run_state, u_char analog_dir)
 {
     plyr_collision_state.pad_rot = pad_rot;
     plyr_collision_state.run_state = run_state;
