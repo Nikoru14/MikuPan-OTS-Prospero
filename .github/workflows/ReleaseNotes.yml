@@ -1,0 +1,31 @@
+name: Release Notes
+
+# Replace the description of a release that already exists with its
+# release-notes/<tag>.md file from the branch this runs on.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v0.1.2-over-shoulder'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          notes="release-notes/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::No $notes on this branch."
+            exit 1
+          fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
