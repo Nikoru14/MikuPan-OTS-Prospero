@@ -8,6 +8,7 @@
 #include "ingame/plyr/plyr_ctl.h"
 #include "ingame/plyr/unit_ctl.h"
 #include "graphics/graph3d/sglib.h"
+#include "ingame/camera/camera.h"
 #include "mikupan/io/mikupan_controller.h"
 #include "mikupan/gameplay/mikupan_first_person.h"
 #include "mikupan/gameplay/mikupan_over_shoulder.h"
@@ -82,6 +83,16 @@
 /* plyr_wrk.pr_info.cam_type while the game shows a scripted drama camera. */
 #define OTS_CAM_TYPE_DRAMA 2
 
+/* Guide: turn towards what a scripted drama camera frames, unless it is
+ * already comfortably on screen.  The player's right stick or mouse takes
+ * over at once. */
+#define OTS_GUIDE_FRAMES 50
+#define OTS_GUIDE_RATE 0.14f
+#define OTS_GUIDE_DONE_DEG 1.5f
+#define OTS_GUIDE_MIN_DIST 300.0f
+#define OTS_GUIDE_VISIBLE_YAW 0.40f   /* fraction of the field of view */
+#define OTS_GUIDE_VISIBLE_PITCH 0.30f
+
 #define OTS_MOUSE_RAD_PER_PIXEL 0.0035f
 #define OTS_STICK_DEADZONE 24.0f
 
@@ -89,6 +100,7 @@ int mikupan_over_shoulder_enabled = 0;
 int mikupan_over_shoulder_side_left = 0;
 int mikupan_over_shoulder_collision_enabled = 1;
 int mikupan_over_shoulder_auto_follow_enabled = 1;
+int mikupan_over_shoulder_scare_camera = MIKUPAN_SCARE_CAMERA_GUIDE;
 float mikupan_over_shoulder_distance = 620.0f;
 float mikupan_over_shoulder_pivot_height = 560.0f;
 float mikupan_over_shoulder_side = 150.0f;
@@ -131,6 +143,20 @@ static int ots_finder_turn_frames = 0;
 static float ots_finder_turn_step = 0.0f;
 static u_char ots_prev_plyr_mode = 0xff;
 static int ots_hide_model = 0;
+
+/* Scripted drama cameras. */
+static int ots_drama_prev = 0;
+static u_short ots_drama_no = 0xffff;
+static int ots_guide_frames = 0;
+static float ots_guide_yaw = 0.0f;
+static float ots_guide_pitch = 0.0f;
+
+/* Heading that the left stick is relative to.  When the view cuts (to an
+ * authored shot and back) it is held until the stick is released, so a
+ * cut never flips the direction Miku is walking. */
+static float ots_move_ref = 0.0f;
+static int ots_move_latched = 0;
+static int ots_move_src_prev = -1;
 
 /* Orbit remembered from the last frame this camera was active. */
 static int ots_resume_valid = 0;
@@ -260,6 +286,20 @@ static int OtsPlayerMoveMotionLocks(void)
 /* Ownership                                                                */
 /* ------------------------------------------------------------------------ */
 
+/* The scripted drama camera the stock code picked this frame, if any.  It
+ * runs before us every frame, so its choice and authored target are fresh. */
+static const CAMERA_DEBUG_PATH* OtsDramaShot(void)
+{
+    const CAMERA_DEBUG_PATH* path = CameraGetDebugPath();
+
+    if (path == NULL || !path->active || path->kind != OTS_CAM_TYPE_DRAMA)
+    {
+        return NULL;
+    }
+
+    return path;
+}
+
 static int OtsModeAllowsCamera(void)
 {
     switch (plyr_wrk.mode)
@@ -295,10 +335,10 @@ static int OtsIngameModeAllowsCamera(void)
              * up) set no camera of their own: the original simply kept the
              * room's fixed angle, so keep ours instead of cutting to it.
              * Events that do frame something use a drama camera, which the
-             * stock code has just selected this frame; hand those back.
-             * Movies and in-engine scenes lock the camera before we run, and
-             * special events have a mode of their own. */
-            return plyr_wrk.pr_info.cam_type != OTS_CAM_TYPE_DRAMA;
+             * Scare Camera setting handles like any other.  Movies and
+             * in-engine scenes lock the camera before we run, and special
+             * events have a mode of their own. */
+            return 1;
         default:
             return 0;
     }
@@ -322,6 +362,13 @@ static int OtsCanOwnCamera(void)
     }
 
     if (dbg_wrk.cam_mode != 0)
+    {
+        return 0;
+    }
+
+    /* Original: let the authored scare shot play as it was designed. */
+    if (mikupan_over_shoulder_scare_camera == MIKUPAN_SCARE_CAMERA_ORIGINAL
+        && OtsDramaShot() != NULL)
     {
         return 0;
     }
@@ -682,6 +729,7 @@ static void OtsActivate(void)
     }
     else
     {
+        ots_guide_frames = 0;
         ots_yaw = plyr_wrk.move_box.rot[1];
         ots_pitch = DEG2RAD(mikupan_over_shoulder_default_pitch_deg);
         OtsClampPitch();
@@ -718,7 +766,7 @@ static void OtsCountIdleFrame(void)
     }
 }
 
-static void OtsUpdateLook(void)
+static int OtsUpdateLook(void)
 {
     float yaw_in = 0.0f;
     float pitch_in = 0.0f;
@@ -787,6 +835,8 @@ static void OtsUpdateLook(void)
     {
         OtsCountIdleFrame();
     }
+
+    return moved;
 }
 
 static void OtsUpdateRecenter(void)
@@ -819,7 +869,8 @@ static void OtsAutoFollow(void)
 {
     float delta;
 
-    if (!mikupan_over_shoulder_auto_follow_enabled || ots_recenter)
+    if (!mikupan_over_shoulder_auto_follow_enabled || ots_recenter
+        || ots_guide_frames > 0)
     {
         return;
     }
@@ -845,6 +896,104 @@ static void OtsAutoFollow(void)
     }
 
     ots_yaw = OtsWrap(ots_yaw + delta * OTS_AUTO_FOLLOW_RATE);
+}
+
+static void OtsStartGuide(const sceVu0FVECTOR target)
+{
+    sceVu0FVECTOR from;
+    float dx;
+    float dy;
+    float dz;
+    float horiz;
+    float yaw;
+    float pitch;
+    float fov;
+
+    OtsTargetPivot(from);
+
+    dx = target[0] - from[0];
+    dy = target[1] - from[1];
+    dz = target[2] - from[2];
+    horiz = sqrtf(dx * dx + dz * dz);
+
+    /* Shots that simply watch Miku leave nothing to turn towards. */
+    if (horiz < OTS_GUIDE_MIN_DIST)
+    {
+        return;
+    }
+
+    /* Positive pitch looks up, and world Y points down. */
+    yaw = SgAtan2f(dx, dz);
+    pitch = OtsClamp(SgAtan2f(-dy, horiz), OtsPitchMin(), OtsPitchMax());
+
+    fov = DEG2RAD(mikupan_over_shoulder_fov_deg);
+
+    if (fabsf(OtsWrap(yaw - ots_yaw)) < fov * OTS_GUIDE_VISIBLE_YAW
+        && fabsf(pitch - ots_pitch) < fov * OTS_GUIDE_VISIBLE_PITCH)
+    {
+        return;
+    }
+
+    ots_guide_yaw = yaw;
+    ots_guide_pitch = pitch;
+    ots_guide_frames = OTS_GUIDE_FRAMES;
+    ots_recenter = 0;
+    ots_look_idle_frames = 0;
+}
+
+static void OtsUpdateGuide(int player_looked)
+{
+    float dyaw;
+    float dpitch;
+
+    if (ots_guide_frames <= 0)
+    {
+        return;
+    }
+
+    if (player_looked)
+    {
+        ots_guide_frames = 0;
+        return;
+    }
+
+    dyaw = OtsWrap(ots_guide_yaw - ots_yaw);
+    dpitch = ots_guide_pitch - ots_pitch;
+
+    ots_yaw = OtsWrap(ots_yaw + dyaw * OTS_GUIDE_RATE);
+    ots_pitch += dpitch * OTS_GUIDE_RATE;
+    OtsClampPitch();
+
+    ots_guide_frames--;
+
+    if (fabsf(dyaw) < DEG2RAD(OTS_GUIDE_DONE_DEG)
+        && fabsf(dpitch) < DEG2RAD(OTS_GUIDE_DONE_DEG))
+    {
+        ots_guide_frames = 0;
+    }
+}
+
+/* Watches for the game switching to a scripted drama camera and, in Guide
+ * mode, turns towards what it frames once per shot. */
+static void OtsWatchDrama(void)
+{
+    const CAMERA_DEBUG_PATH* shot = OtsDramaShot();
+
+    if (shot == NULL)
+    {
+        ots_drama_prev = 0;
+        ots_drama_no = 0xffff;
+        return;
+    }
+
+    if ((!ots_drama_prev || shot->no != ots_drama_no)
+        && mikupan_over_shoulder_scare_camera == MIKUPAN_SCARE_CAMERA_GUIDE)
+    {
+        OtsStartGuide(shot->target_i);
+    }
+
+    ots_drama_prev = 1;
+    ots_drama_no = shot->no;
 }
 
 /* Raising the Camera Obscura: turn Miku towards where the camera looks so the
@@ -1060,6 +1209,10 @@ void MikuPan_OverShoulderSetEnabled(int enabled)
         ots_was_active = 0;
         ots_last_valid = 0;
         ots_resume_valid = 0;
+        ots_guide_frames = 0;
+        ots_drama_prev = 0;
+        ots_move_latched = 0;
+        ots_move_src_prev = -1;
     }
 
     mikupan_over_shoulder_enabled = enabled;
@@ -1104,7 +1257,11 @@ int MikuPan_OverShoulderCameraCtrl(void)
         ots_active = 0;
         ots_was_active = 0;
         ots_finder_turn_frames = 0;
+        ots_guide_frames = 0;
         ots_prev_plyr_mode = plyr_wrk.mode;
+
+        /* Remember the shot so returning to it does not guide again. */
+        OtsWatchDrama();
         return 0;
     }
 
@@ -1116,15 +1273,20 @@ int MikuPan_OverShoulderCameraCtrl(void)
     }
 
     OtsHandleFinderIn();
+    OtsWatchDrama();
 
     if (OtsCanOwnGameplay())
     {
-        OtsUpdateLook();
+        int looked = OtsUpdateLook();
+
+        OtsUpdateGuide(looked);
         OtsUpdateRecenter();
         OtsAutoFollow();
     }
     else
     {
+        /* Events: no player control, but still turn towards a scare. */
+        OtsUpdateGuide(0);
         OtsCountIdleFrame();
     }
 
@@ -1136,6 +1298,41 @@ int MikuPan_OverShoulderCameraCtrl(void)
     OtsRememberOrbit();
 
     return 1;
+}
+
+/* The left stick walks Miku relative to the camera on screen: ours, or an
+ * authored shot the Scare Camera setting cut to.  Across a cut the old
+ * heading is held until the stick is released, as the original game did. */
+static void OtsUpdateMoveReference(int stick_held)
+{
+    int source = ots_active ? 0 : 1;
+    float reference;
+
+    if (source == 0)
+    {
+        reference = ots_yaw;
+    }
+    else
+    {
+        reference = GetTrgtRotY(camera.p, camera.i);
+    }
+
+    if (ots_move_src_prev >= 0 && source != ots_move_src_prev && stick_held)
+    {
+        ots_move_latched = 1;
+    }
+
+    if (!stick_held)
+    {
+        ots_move_latched = 0;
+    }
+
+    if (!ots_move_latched)
+    {
+        ots_move_ref = reference;
+    }
+
+    ots_move_src_prev = source;
 }
 
 int MikuPan_OverShoulderMoveCtrl(MOVE_BOX* mb, sceVu0FVECTOR tv)
@@ -1158,6 +1355,7 @@ int MikuPan_OverShoulderMoveCtrl(MOVE_BOX* mb, sceVu0FVECTOR tv)
     }
 
     r = GetMovePad(0);
+    OtsUpdateMoveReference(r != 10.0f);
     run_chk = PlyrMoveStaChk(r);
     PlyrCollisionSetInputState(r, run_chk, pad[0].an_dir[0]);
     GetMoveSpeed(tv);
@@ -1212,8 +1410,8 @@ int MikuPan_OverShoulderMoveCtrl(MOVE_BOX* mb, sceVu0FVECTOR tv)
         return 1;
     }
 
-    /* Which way the player pushes, as seen through this camera. */
-    desired = OtsWrap(r + ots_yaw);
+    /* Which way the player pushes, as seen through the camera on screen. */
+    desired = OtsWrap(r + ots_move_ref);
 
     if (plyr_wrk.mvsta & 0x100000)
     {

@@ -110,7 +110,8 @@ MikuPan_Config mikupan_configuration = {
         2.2f,
         -8.0f,
         0.5f,
-        9.0f
+        9.0f,
+        0
     },
     {
         -1,
@@ -344,6 +345,7 @@ static void MikuPan_ConfigurationValidateOverShoulderCamera(
         MikuPan_ClampFloat(ots->default_pitch_deg, -40.0f, 35.0f);
     ots->smoothing = MikuPan_ClampFloat(ots->smoothing, 0.0f, 0.9f);
     ots->turn_speed_deg = MikuPan_ClampFloat(ots->turn_speed_deg, 1.0f, 30.0f);
+    ots->scare_camera = MikuPan_ClampInt(ots->scare_camera, 0, 2);
 }
 
 static void MikuPan_ConfigurationValidateInput(MikuPan_ConfigInput* input)

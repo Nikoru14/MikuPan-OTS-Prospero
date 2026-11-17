@@ -1470,6 +1470,13 @@ Page GamePage(void)
                     62.0f),
             over_shoulder));
         rows.push_back(When(
+            Choice("Scare Camera",
+                   Fixed("When the game cuts to a scripted angle for a scare or staged moment. Guided turns the camera towards it if it is off screen, Original cuts to the authored shot, Off ignores it."),
+                   {"Guided", "Original", "Off"},
+                   [] { return MikuPan_GetOverShoulderScareCamera(); },
+                   [](int mode) { MikuPan_SetOverShoulderScareCamera(mode); }),
+            over_shoulder));
+        rows.push_back(When(
             Toggle("Camera Collision",
                    Fixed("Pull the camera in so walls, doors and large furniture never block the view. Thin props such as ropes are looked through."),
                    [] { return MikuPan_OverShoulderCollisionEnabled() != 0; },

@@ -266,6 +266,7 @@ typedef struct
     float default_pitch_deg;
     float smoothing;
     float turn_speed_deg;
+    int scare_camera;
 } MikuPan_ConfigOverShoulderCamera;
 
 typedef struct

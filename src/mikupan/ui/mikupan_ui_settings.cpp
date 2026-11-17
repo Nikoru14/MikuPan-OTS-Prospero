@@ -256,6 +256,7 @@ static void MikuPan_ApplyOverShoulderCameraConfiguration(void)
     mikupan_over_shoulder_default_pitch_deg = ots->default_pitch_deg;
     mikupan_over_shoulder_smoothing = ots->smoothing;
     mikupan_over_shoulder_turn_speed_deg = ots->turn_speed_deg;
+    mikupan_over_shoulder_scare_camera = ots->scare_camera;
 
     MikuPan_OverShoulderSetEnabled(ots->enabled);
 }
@@ -341,6 +342,8 @@ static void MikuPan_UiStoreRuntimeConfiguration(void)
         mikupan_over_shoulder_smoothing;
     mikupan_configuration.over_shoulder_camera.turn_speed_deg =
         mikupan_over_shoulder_turn_speed_deg;
+    mikupan_configuration.over_shoulder_camera.scare_camera =
+        mikupan_over_shoulder_scare_camera;
     mikupan_configuration.input.selected_gamepad_index =
         MikuPan_ControllerGetPreferredGamepadIndex();
     MikuPan_ControllerStoreBindingsToConfig();
@@ -2579,6 +2582,21 @@ float MikuPan_GetOverShoulderFov(void)
 void MikuPan_SetOverShoulderFov(float fov_deg)
 {
     mikupan_over_shoulder_fov_deg = MikuPan_ClampFloat(fov_deg, 40.0f, 100.0f);
+}
+
+int MikuPan_GetOverShoulderScareCamera(void)
+{
+    return mikupan_over_shoulder_scare_camera;
+}
+
+void MikuPan_SetOverShoulderScareCamera(int mode)
+{
+    if (mode < 0 || mode >= MIKUPAN_SCARE_CAMERA_COUNT)
+    {
+        mode = MIKUPAN_SCARE_CAMERA_GUIDE;
+    }
+
+    mikupan_over_shoulder_scare_camera = mode;
 }
 
 int MikuPan_OverShoulderCollisionEnabled(void)

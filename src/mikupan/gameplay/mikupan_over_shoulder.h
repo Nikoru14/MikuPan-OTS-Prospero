@@ -20,7 +20,15 @@
  * are untouched.
  */
 
+/* What to do when the game switches to one of its scripted "drama" cameras,
+ * the authored angles that frame scares and other staged moments. */
+#define MIKUPAN_SCARE_CAMERA_GUIDE    (0) /* stay, but turn to face it if unseen */
+#define MIKUPAN_SCARE_CAMERA_ORIGINAL (1) /* cut to the authored shot */
+#define MIKUPAN_SCARE_CAMERA_OFF      (2) /* ignore it */
+#define MIKUPAN_SCARE_CAMERA_COUNT    (3)
+
 extern int mikupan_over_shoulder_enabled;
+extern int mikupan_over_shoulder_scare_camera;
 extern int mikupan_over_shoulder_side_left;
 extern int mikupan_over_shoulder_collision_enabled;
 extern int mikupan_over_shoulder_auto_follow_enabled;

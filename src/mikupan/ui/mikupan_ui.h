@@ -129,6 +129,8 @@ float MikuPan_GetOverShoulderSensitivity(void);
 void MikuPan_SetOverShoulderSensitivity(float sensitivity);
 float MikuPan_GetOverShoulderFov(void);
 void MikuPan_SetOverShoulderFov(float fov_deg);
+int MikuPan_GetOverShoulderScareCamera(void);
+void MikuPan_SetOverShoulderScareCamera(int mode);
 int MikuPan_OverShoulderCollisionEnabled(void);
 void MikuPan_SetOverShoulderCollisionEnabled(int enabled);
 int MikuPan_OverShoulderAutoFollowEnabled(void);
