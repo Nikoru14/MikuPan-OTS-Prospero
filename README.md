@@ -250,7 +250,10 @@ cmake --build build-ps5 --target MikuPan
 The title folder is written to `build-ps5/app/PPSA39390`. Copy it to
 `/data/homebrew/` (or `homebrew/` on a USB drive) for ShadowMount+ to mount,
 and put `IMG_HD.BIN` and `IMG_BD.BIN` from your disc in `/data/MikuPan/`, like
-other homebrew keeps its files.
+other homebrew keeps its files. For the FMV cutscenes, also copy the disc's
+movie folders there as they are (`MOVIE` and `MOVIE2` on the US and Japanese
+discs, `MOVIE3` and `MOVIE4` on the European one), so that for example
+`/data/MikuPan/MOVIE/SCN0010.PSS` exists. Names are matched ignoring case.
 
 Settings, the baked `IMG_TEX.BIN`, saves and `mikupan.log` also go to
 `/data/MikuPan/`. If the title cannot write there, they go to its own

@@ -1490,6 +1490,10 @@ bool MikuPan_ResolveCdPath(const char* path, char* buffer, size_t buffer_size)
         const std::filesystem::path relative_data_path(s);
         std::filesystem::path resolved_path =
             MikuPan_GetDataRoot() / relative_data_path;
+#ifdef __PROSPERO__
+        /* the disc's folders may have been copied as movie/scn0010.pss */
+        resolved_path = MikuPan_Ps5ResolveCase(resolved_path.generic_string());
+#endif
         if (!MikuPan_FsExists(resolved_path)) {
             if (!MikuPan_IsRequiredArchiveDataFile(relative_data_path))
             {
