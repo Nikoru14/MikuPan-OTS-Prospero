@@ -117,7 +117,8 @@ function(mikupan_ps5_title target)
             "${MIKUPAN_PS5_DIR}/platform/shims.c"
             "${MIKUPAN_PS5_DIR}/platform/libc_extras.c"
             "${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp")
-    target_include_directories(${target} PRIVATE "${MIKUPAN_PS5_DIR}/platform")
+    target_include_directories(${target} PRIVATE "${MIKUPAN_PS5_DIR}/platform"
+            "${MIKUPAN_PS5_VULKAN_DIR}/.deps/native/radv-release/include")
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp"
             PROPERTIES COMPILE_DEFINITIONS "MIKUPAN_PS5_TITLE_NAME=\"${MIKUPAN_PS5_TITLE_NAME}\"")
     set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS

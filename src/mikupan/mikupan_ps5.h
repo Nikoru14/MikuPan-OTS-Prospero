@@ -18,6 +18,16 @@ const char *MikuPan_GetPs5UserDirectory(void);
 /// to show anything on the console.
 void MikuPan_Ps5Notify(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
+/// Sends SDL's own log messages (SDL_GPU's reasons for refusing a driver
+/// among them) to MikuPan's log, at every priority for SDL's GPU, video and
+/// system categories. Call before SDL_Init.
+void MikuPan_Ps5ForwardSdlLog(void);
+
+/// Walks through what SDL_GPU's Vulkan backend needs from RADV (an
+/// instance, a GPU, its features and extensions, a graphics queue, the
+/// display) and logs each answer, to say why SDL_GPU refused Vulkan.
+void MikuPan_Ps5VulkanReport(void);
+
 #ifdef __cplusplus
 }
 #endif
