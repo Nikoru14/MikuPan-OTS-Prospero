@@ -163,6 +163,21 @@ jobs:
         run: |
           zip -r MikuPan_${{ matrix.region.name }}_${{ matrix.sys.name }}_v${{ github.event.inputs.version }}.zip MikuPan/*
 
+      # Publish release-notes/v<version>.md as the release description, or a
+      # short fallback with the install steps when there is no notes file.
+      - name: Release notes
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          notes="release-notes/v${VERSION}.md"
+          if [ -f "$notes" ]; then
+            cp "$notes" release-body.md
+          else
+            printf 'Built from %s.\n\n' "$GITHUB_SHA" > release-body.md
+            cat release-notes/_install.md >> release-body.md
+          fi
+
       - name: Release
         uses: ncipollo/release-action@a2e71bdd4e7dab70ca26a852f29600c98b33153e
         with:
@@ -171,4 +186,5 @@ jobs:
           replacesArtifacts: false
           name: "MikuPan v${{ github.event.inputs.version }}"
           tag: "v${{ github.event.inputs.version }}"
+          bodyFile: release-body.md
           artifacts: build/MikuPan_${{ matrix.region.name }}_${{ matrix.sys.name }}_v${{ github.event.inputs.version }}.zip
