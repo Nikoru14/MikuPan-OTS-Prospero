@@ -525,6 +525,10 @@ if(ANDROID)
     target_link_libraries(MikuPan PRIVATE log)
 endif()
 
+if(PS5)
+    mikupan_ps5_title(MikuPan)
+endif()
+
 if(NOT ANDROID)
     add_custom_command(TARGET MikuPan POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/resources $<TARGET_FILE_DIR:MikuPan>/resources

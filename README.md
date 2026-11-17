@@ -207,6 +207,59 @@ access to that folder.
 magnification for UI sprites. It defaults to on; use **Save Configuration**
 to retain changes. Effects and screen captures keep their original filtering.
 
+## PlayStation 5 (experimental)
+MikuPan cross-builds for a jailbroken PS5 as a native title folder that
+[ShadowMount+](https://github.com/drakmor/ShadowMountPlus) can mount. This is
+early work: the game builds and packages, but SDL3 still uses its dummy video,
+audio and input drivers on the console, so it does not show anything yet.
+
+What you need, on Linux or WSL2:
+
+- `clang-18`, `lld-18`, `llvm-18`, `cmake`, `ninja-build`, `git`, `curl`,
+  `unzip` and `python3`.
+- The community [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk)
+  (tested with v0.45), unpacked anywhere, with `PS5_PAYLOAD_SDK` pointing at
+  it.
+- [ps5-native-app-boilerplate](https://github.com/drakmor/ps5-native-app-boilerplate),
+  which provides the converter that makes `eboot.bin` and a clean-room
+  `libc.prx` runtime module. Nothing from your console is needed:
+
+  ```sh
+  git clone https://github.com/drakmor/ps5-native-app-boilerplate
+  bash ps5-native-app-boilerplate/tools/rebuild-libc.sh
+  ```
+
+  That builds `build/runtime-shim/ps5-native-tool` and `runtime/libc.prx`
+  inside the boilerplate folder.
+- Compiled shaders: copy `resources/shaders/spirv`, `dxil` and `msl` from any
+  MikuPan release zip into this repository's `resources/shaders/`.
+
+Then configure and build:
+
+```sh
+cmake -B build-ps5 -G Ninja \
+      -DCMAKE_TOOLCHAIN_FILE=$PS5_PAYLOAD_SDK/toolchain/prospero.cmake \
+      -DCMAKE_BUILD_TYPE=Debug -DMIKUPAN_COMPILE_SHADERS=OFF \
+      -DMIKUPAN_PS5_NATIVE_TOOL=<boilerplate>/build/runtime-shim/ps5-native-tool \
+      -DMIKUPAN_PS5_RUNTIME_MODULE=<boilerplate>/runtime/libc.prx
+cmake --build build-ps5 --target MikuPan
+```
+
+The title folder is written to `build-ps5/app/PPSA39390`. Copy
+`IMG_HD.BIN` and `IMG_BD.BIN` from your disc into that folder, then copy the
+whole folder to `/data/homebrew/` (or `homebrew/` on a USB drive) for
+ShadowMount+ to mount. The folder is mounted read-only at `/app0`; settings,
+the baked `IMG_TEX.BIN` and saves go to `/download0/MikuPan`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `MIKUPAN_PS5_TITLE_ID` | `PPSA39390` | `PPSA` plus five digits; must be unique on the console |
+| `MIKUPAN_PS5_CONCEPT_ID` | `39390` | Five digits |
+| `MIKUPAN_PS5_CONTENT_SUFFIX` | `MIKUPANPROSPERO1` | 16 characters `A-Z` or `0-9` |
+| `MIKUPAN_PS5_TITLE_NAME` | `MikuPan OTS` | Name on the home screen |
+
+See `ps5/NOTICE.md` for where the PS5 support files come from.
+
 # PS2 save transfer
 
 Open **Settings → PS2 save transfer…** in the overlay to transfer gameplay saves.
