@@ -1,6 +1,7 @@
 #include "mikupan/mikupan_ps5.h"
 
 #include "mikupan/debug/mikupan_logging.h"
+#include "mikupan/debug/mikupan_logging_c.h"
 
 #include <cstdarg>
 #include <cstddef>
@@ -32,4 +33,22 @@ extern "C" void MikuPan_Ps5Notify(const char *fmt, ...)
 
     info_log("Notification: %s", request.message);
     sceKernelSendNotificationRequest(0, &request, sizeof(request), 0);
+}
+
+extern "C" int sceKernelUsleep(unsigned int microseconds);
+
+/* Called by the title's entry point (ps5/native/app_crt.cpp) when main
+ * returns. A title started from the home screen gets SIGSYS when it calls
+ * exit(), which shows a crash dialog, so stay idle instead; the player
+ * closes the title from the PS button menu, as with the OpenLF2 port. */
+extern "C" [[noreturn]] void catchReturnFromMain(int status)
+{
+    MikuPan_Ps5Notify("MikuPan has stopped (status %d). Close it from the PS "
+                      "button menu.",
+                      status);
+    MikuPan_FlushLog();
+    for (;;)
+    {
+        sceKernelUsleep(1000000);
+    }
 }

@@ -322,6 +322,13 @@ SDL_AppResult MikuPan_Init()
 
     info_log("Initializing SDL");
 
+#ifdef __PROSPERO__
+    /* Until SDL3 has PS5 video and audio drivers, use its placeholder
+     * drivers, which SDL only picks when asked for by name. */
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+#endif
+
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC))
     {
         info_log("Couldn't initialize SDL: %s", SDL_GetError());
