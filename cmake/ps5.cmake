@@ -1,16 +1,18 @@
-# PlayStation 5 (Prospero) homebrew build, using the community
-# ps5-payload-sdk toolchain:
+# PlayStation 5 (Prospero) homebrew build. It links PS5_Vulkan's RADV, so it
+# uses the SDK and compiler RADV was built with (see "PlayStation 5" in the
+# README):
 #
+#   export LLVM_CONFIG=<LLVM 22>/bin/llvm-config
 #   cmake -B build-ps5 -G Ninja \
-#         -DCMAKE_TOOLCHAIN_FILE=$PS5_PAYLOAD_SDK/toolchain/prospero.cmake \
+#         -DCMAKE_TOOLCHAIN_FILE=<PS5_Vulkan>/.deps/native/ps5-payload-sdk/toolchain/prospero.cmake \
+#         -DMIKUPAN_PS5_VULKAN_DIR=<PS5_Vulkan> \
 #         -DCMAKE_BUILD_TYPE=Debug -DMIKUPAN_COMPILE_SHADERS=OFF
 #
 # The toolchain targets x86_64-sie-ps5, which reports itself as FreeBSD, so
 # SDL3 would otherwise look for desktop FreeBSD backends (X11, Wayland, OSS,
-# udev, D-Bus...). None of those exist on the console: switch them all off and
-# keep only what a console build can use. Video and audio start as SDL's dummy
-# drivers until the PS5 backends are written; Vulkan and SDL_GPU stay on for
-# the community Mesa/RADV driver.
+# udev, D-Bus...). None of those exist on the console: switch them all off.
+# SDL gets the console's own video, audio and controller drivers from ps5/sdl
+# (ps5/patches/sdl.patch registers them), and Vulkan and SDL_GPU run on RADV.
 
 if(NOT PS5)
     return()
@@ -29,17 +31,40 @@ foreach(sdl_off
         SDL_OPENGL SDL_OPENGLES
         SDL_ALSA SDL_JACK SDL_PIPEWIRE SDL_PULSEAUDIO SDL_SNDIO SDL_OSS SDL_DISKAUDIO
         SDL_DBUS SDL_IBUS SDL_LIBUDEV SDL_HIDAPI SDL_HIDAPI_LIBUSB SDL_LIBURING
-        SDL_CAMERA)
+        SDL_CAMERA SDL_OFFSCREEN SDL_DUMMYVIDEO SDL_DUMMYAUDIO SDL_VIRTUAL_JOYSTICK)
     mikupan_ps5_force(${sdl_off} OFF)
 endforeach()
 
 # SDL_UNIX_CONSOLE_BUILD skips SDL's "no X11 or Wayland" desktop check, which
 # is the documented switch for Unix-like targets without desktop windows.
 foreach(sdl_on
-        SDL_STATIC SDL_VULKAN SDL_GPU SDL_RENDER_GPU
-        SDL_DUMMYVIDEO SDL_OFFSCREEN SDL_DUMMYAUDIO SDL_UNIX_CONSOLE_BUILD)
+        SDL_STATIC SDL_VULKAN SDL_GPU SDL_RENDER_GPU SDL_UNIX_CONSOLE_BUILD)
     mikupan_ps5_force(${sdl_on} ON)
 endforeach()
+
+# The console's drivers, outside SDL's tree (cmake/sdl3.cmake applies the
+# patch that builds them).
+set(MIKUPAN_PS5_DIR "${CMAKE_SOURCE_DIR}/ps5")
+set(SDL_PS5_PORT_DIR "${MIKUPAN_PS5_DIR}/sdl" CACHE INTERNAL "")
+set(SDL_PS5_PLATFORM_DIR "${MIKUPAN_PS5_DIR}/platform" CACHE INTERNAL "")
+
+# --- Compiler ----------------------------------------------------------------
+# Clang's PS5 target writes constructors to .ctors, last to first, and the
+# title's CRT runs them first to last, so a file's static initializers would
+# run backwards; ps5/tools/cc-init-array.sh compiles with an init array.
+set(CMAKE_C_COMPILER_LAUNCHER sh "${MIKUPAN_PS5_DIR}/tools/cc-init-array.sh")
+set(CMAKE_CXX_COMPILER_LAUNCHER sh "${MIKUPAN_PS5_DIR}/tools/cc-init-array.sh")
+
+# --- RADV --------------------------------------------------------------------
+set(MIKUPAN_PS5_VULKAN_DIR "" CACHE PATH
+        "PS5_Vulkan checkout with its RADV release archive and native tool built")
+if(NOT EXISTS "${MIKUPAN_PS5_VULKAN_DIR}/tools/radv-link.sh")
+    message(FATAL_ERROR "MikuPan: set MIKUPAN_PS5_VULKAN_DIR to a PS5_Vulkan checkout "
+            "(https://github.com/mihawk-99/PS5_Vulkan) with RADV built")
+endif()
+# The link is PS5_Vulkan's recipe (ps5/tools/link-title.sh), not the compiler's.
+set(CMAKE_CXX_LINK_EXECUTABLE
+        "bash ${MIKUPAN_PS5_DIR}/tools/link-title.sh <TARGET> ${CMAKE_BINARY_DIR}/ps5/link ${MIKUPAN_PS5_VULKAN_DIR} ${PS5_PAYLOAD_SDK} <OBJECTS> <LINK_LIBRARIES>")
 
 # --- Title packaging ---------------------------------------------------------
 # The game is linked as a native title (not a payload) and staged as a folder
@@ -52,19 +77,18 @@ endforeach()
 #     sce_module/libc.prx    clean-room runtime module
 #     resources/             the game's own resources
 #
-# ps5-native-tool and libc.prx come from ps5-native-app-boilerplate, built on
-# the host (see the README). Without them only the ELF is built.
-set(MIKUPAN_PS5_DIR "${CMAKE_SOURCE_DIR}/ps5")
+# ps5-native-tool and libc.prx are PS5_Vulkan's (tools/rebuild-libc.sh builds
+# both).
 set(MIKUPAN_PS5_TITLE_ID "PPSA39390" CACHE STRING
         "PS5 title ID: PPSA followed by five digits, unique on the console")
 set(MIKUPAN_PS5_CONCEPT_ID "39390" CACHE STRING "PS5 concept ID: five digits")
 set(MIKUPAN_PS5_CONTENT_SUFFIX "MIKUPANPROSPERO1" CACHE STRING
         "Last part of the PS5 content ID: 16 characters A-Z or 0-9")
 set(MIKUPAN_PS5_TITLE_NAME "MikuPan OTS" CACHE STRING "Name shown on the PS5 home screen")
-set(MIKUPAN_PS5_NATIVE_TOOL "" CACHE FILEPATH
-        "ps5-native-tool from ps5-native-app-boilerplate")
-set(MIKUPAN_PS5_RUNTIME_MODULE "" CACHE FILEPATH
-        "libc.prx from ps5-native-app-boilerplate")
+set(MIKUPAN_PS5_NATIVE_TOOL "${MIKUPAN_PS5_VULKAN_DIR}/build/runtime-shim/ps5-native-tool"
+        CACHE FILEPATH "ps5-native-tool (PS5_Vulkan's tools/rebuild-libc.sh builds it)")
+set(MIKUPAN_PS5_RUNTIME_MODULE "${MIKUPAN_PS5_VULKAN_DIR}/runtime/libc.prx" CACHE FILEPATH
+        "The clean-room libc.prx runtime module")
 
 if(NOT MIKUPAN_PS5_TITLE_ID MATCHES "^PPSA[0-9][0-9][0-9][0-9][0-9]$")
     message(FATAL_ERROR "MIKUPAN_PS5_TITLE_ID must be PPSA followed by five digits")
@@ -89,28 +113,16 @@ function(mikupan_ps5_title target)
 
     target_sources(${target} PRIVATE
             "${native}/app_crt.cpp"
-            "${native}/cxa_thread_atexit.cpp"
-            "${native}/payload_shims.cpp"
+            "${MIKUPAN_PS5_DIR}/platform/platform.c"
+            "${MIKUPAN_PS5_DIR}/platform/shims.c"
             "${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp")
-
-    # The SDK's compiler wrapper links the WebKit-only libkernel_web unless
-    # libkernel is requested; a title binds against libkernel. The console
-    # has no general dlopen service, so SDL's dynamic loading resolves to
-    # nothing, as in the OpenLF2 PS5 port.
-    target_link_libraries(${target} PRIVATE kernel)
-    target_link_options(${target} PRIVATE
-            -nostartfiles
-            "LINKER:-e,_start"
-            "LINKER:--eh-frame-hdr"
-            "LINKER:--defsym=__dlopen=0"
-            "LINKER:--defsym=__dlclose=0"
-            "LINKER:--defsym=__dlsym=0"
-            "LINKER:--defsym=__dladdr=0"
-            "LINKER:--defsym=__dlerror=0"
-            "LINKER:--version-script=${native}/app-symbols.map"
-            "LINKER:-T,${native}/ps5-pie.ld")
+    target_include_directories(${target} PRIVATE "${MIKUPAN_PS5_DIR}/platform")
+    set_source_files_properties("${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp"
+            PROPERTIES COMPILE_DEFINITIONS "MIKUPAN_PS5_TITLE_NAME=\"${MIKUPAN_PS5_TITLE_NAME}\"")
     set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
-            "${native}/app-symbols.map" "${native}/ps5-pie.ld")
+            "${native}/app-symbols.map" "${native}/ps5-pie.ld"
+            "${MIKUPAN_PS5_DIR}/tools/link-title.sh"
+            "${MIKUPAN_PS5_VULKAN_DIR}/.deps/native/radv-release/lib/libvulkan_radeon.ps5.a")
 
     if(NOT MIKUPAN_PS5_NATIVE_TOOL OR NOT MIKUPAN_PS5_RUNTIME_MODULE)
         message(STATUS "MikuPan: PS5 title folder skipped; set "
@@ -134,6 +146,8 @@ function(mikupan_ps5_title target)
                     "${CMAKE_BINARY_DIR}/ps5" "${app}/sce_sys" "${app}/sce_module"
             COMMAND "${tool}" link --in "$<TARGET_FILE:${target}>" --out "${eboot_elf}"
                     --stub-dir "${PS5_PAYLOAD_SDK}/target/lib"
+                    --stub "${CMAKE_BINARY_DIR}/ps5/link/stubs/libSceAgc.so"
+                    --stub "${CMAKE_BINARY_DIR}/ps5/link/stubs/libSceAgcDriver.so"
                     --module-sdk ${MIKUPAN_PS5_MODULE_SDK}
                     --companion-sdk ${MIKUPAN_PS5_COMPANION_SDK}
                     --file-name eboot.elf

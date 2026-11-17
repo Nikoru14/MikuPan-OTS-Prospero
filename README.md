@@ -209,40 +209,41 @@ to retain changes. Effects and screen captures keep their original filtering.
 
 ## PlayStation 5 (experimental)
 MikuPan cross-builds for a jailbroken PS5 as a native title folder that
-[ShadowMount+](https://github.com/drakmor/ShadowMountPlus) can mount. This is
-early work: the game builds and packages, but SDL3 still uses its dummy video,
-audio and input drivers on the console, so it does not show anything yet
-beyond PS5 notifications and its log file.
+[ShadowMount+](https://github.com/drakmor/ShadowMountPlus) can mount. It
+renders with SDL_GPU's Vulkan backend on
+[PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan)'s RADV, Mesa's AMD
+Vulkan driver ported to the console, which is linked into the title. SDL3 gets
+the console's own video, audio and controller drivers from `ps5/sdl`. This is
+early work.
 
 What you need, on Linux or WSL2:
 
-- `clang-18`, `lld-18`, `llvm-18`, `cmake`, `ninja-build`, `git`, `curl`,
-  `unzip` and `python3`.
-- The community [ps5-payload-sdk](https://github.com/ps5-payload-dev/sdk)
-  (tested with v0.45), unpacked anywhere, with `PS5_PAYLOAD_SDK` pointing at
-  it.
-- [ps5-native-app-boilerplate](https://github.com/drakmor/ps5-native-app-boilerplate),
-  which provides the converter that makes `eboot.bin` and a clean-room
-  `libc.prx` runtime module. Nothing from your console is needed:
+- `cmake`, `ninja-build`, `meson`, `git`, `curl`, `unzip`, `python3`, and
+  [LLVM 22](https://github.com/llvm/llvm-project/releases) (RADV built with an
+  older Clang does not link into a title).
+- PS5_Vulkan with its RADV release archive built, by its own instructions:
+  it fetches its payload SDK fork and builds RADV from
+  [PS5_Mesa](https://github.com/mihawk-99/PS5_Mesa). Then build its
+  converter and `libc.prx`:
 
   ```sh
-  git clone https://github.com/drakmor/ps5-native-app-boilerplate
-  bash ps5-native-app-boilerplate/tools/rebuild-libc.sh
+  bash PS5_Vulkan/tools/rebuild-libc.sh
   ```
 
-  That builds `build/runtime-shim/ps5-native-tool` and `runtime/libc.prx`
-  inside the boilerplate folder.
+  That gives `.deps/native/radv-release/lib/libvulkan_radeon.ps5.a`,
+  `build/runtime-shim/ps5-native-tool` and `runtime/libc.prx` inside
+  PS5_Vulkan. Nothing from your console is needed.
 - Compiled shaders: copy `resources/shaders/spirv`, `dxil` and `msl` from any
   MikuPan release zip into this repository's `resources/shaders/`.
 
-Then configure and build:
+Then configure and build with PS5_Vulkan's SDK and LLVM 22:
 
 ```sh
+export LLVM_CONFIG=<LLVM 22>/bin/llvm-config
 cmake -B build-ps5 -G Ninja \
-      -DCMAKE_TOOLCHAIN_FILE=$PS5_PAYLOAD_SDK/toolchain/prospero.cmake \
-      -DCMAKE_BUILD_TYPE=Debug -DMIKUPAN_COMPILE_SHADERS=OFF \
-      -DMIKUPAN_PS5_NATIVE_TOOL=<boilerplate>/build/runtime-shim/ps5-native-tool \
-      -DMIKUPAN_PS5_RUNTIME_MODULE=<boilerplate>/runtime/libc.prx
+      -DCMAKE_TOOLCHAIN_FILE=<PS5_Vulkan>/.deps/native/ps5-payload-sdk/toolchain/prospero.cmake \
+      -DMIKUPAN_PS5_VULKAN_DIR=<PS5_Vulkan> \
+      -DCMAKE_BUILD_TYPE=Debug -DMIKUPAN_COMPILE_SHADERS=OFF
 cmake --build build-ps5 --target MikuPan
 ```
 

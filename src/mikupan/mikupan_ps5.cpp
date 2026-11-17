@@ -3,6 +3,8 @@
 #include "mikupan/debug/mikupan_logging.h"
 #include "mikupan/debug/mikupan_logging_c.h"
 
+#include "platform.h"
+
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
@@ -36,19 +38,33 @@ extern "C" void MikuPan_Ps5Notify(const char *fmt, ...)
 }
 
 extern "C" int sceKernelUsleep(unsigned int microseconds);
+extern "C" int sceSystemServiceLoadExec(const char *path, const char *const *argv);
+
+/* Before main (and before SDL starts): standard error into klog and the
+ * shell's splash screen dismissed, which otherwise covers every frame
+ * (ps5/platform/platform.c). */
+__attribute__((constructor)) static void MikuPan_Ps5Startup()
+{
+    platform_init(MIKUPAN_PS5_TITLE_NAME);
+}
 
 /* Called by the title's entry point (ps5/native/app_crt.cpp) when main
- * returns. A title started from the home screen gets SIGSYS when it calls
- * exit(), which shows a crash dialog, so stay idle instead; the player
- * closes the title from the PS button menu, as with the OpenLF2 port. */
+ * returns. A title gets SIGSYS when it calls exit(), which shows a crash
+ * dialog, so ask the shell to close it instead, as PS5_Vulkan's titles do.
+ * The shell closes it asynchronously: wait, and never return. */
 extern "C" [[noreturn]] void catchReturnFromMain(int status)
 {
-    MikuPan_Ps5Notify("MikuPan has stopped (status %d). Close it from the PS "
-                      "button menu.",
-                      status);
+    if (status != 0)
+    {
+        MikuPan_Ps5Notify("MikuPan has stopped (status %d). See "
+                          "/data/MikuPan/mikupan.log",
+                          status);
+    }
     MikuPan_FlushLog();
+    std::fflush(nullptr);
+    (void)sceSystemServiceLoadExec("exit", nullptr);
     for (;;)
     {
-        sceKernelUsleep(1000000);
+        sceKernelUsleep(100000);
     }
 }

@@ -1,9 +1,22 @@
 include(FetchContent)
 
+if(PS5)
+    # The console's video, audio and controller drivers (ps5/sdl), registered
+    # with SDL and built when the toolchain says PS5. Applied once: the check
+    # skips a tree that already has it.
+    set(MIKUPAN_SDL_PS5_PATCH "${CMAKE_SOURCE_DIR}/ps5/patches/sdl.patch")
+    set(MIKUPAN_SDL_PATCH PATCH_COMMAND
+            sh -c "git apply --reverse --check \"$0\" 2>/dev/null || git apply --whitespace=nowarn \"$0\""
+            "${MIKUPAN_SDL_PS5_PATCH}")
+else()
+    set(MIKUPAN_SDL_PATCH "")
+endif()
+
 FetchContent_Declare(
         sdl3
         GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
         GIT_TAG release-3.4.12
+        ${MIKUPAN_SDL_PATCH}
 )
 if(ANDROID)
     set(SDL_STATIC OFF)

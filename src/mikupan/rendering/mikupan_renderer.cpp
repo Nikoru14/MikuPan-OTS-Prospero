@@ -323,10 +323,11 @@ SDL_AppResult MikuPan_Init()
     info_log("Initializing SDL");
 
 #ifdef __PROSPERO__
-    /* Until SDL3 has PS5 video and audio drivers, use its placeholder
-     * drivers, which SDL only picks when asked for by name. */
-    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
-    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    /* The console's own drivers (ps5/sdl): the screen through VK_KHR_display
+     * on RADV, AudioOut, and the controllers through scePad. */
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "ps5");
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "ps5");
+    SDL_SetHint(SDL_HINT_GPU_DRIVER, "vulkan");
 #endif
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC))
