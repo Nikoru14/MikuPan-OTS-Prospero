@@ -8,6 +8,12 @@
 #include "spdlog/sinks/android_sink.h"
 #endif
 
+#ifdef __PROSPERO__
+#include "mikupan/mikupan_ps5.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include <string>
+#endif
+
 #include <array>
 #include <algorithm>
 #include <cstdarg>
@@ -78,6 +84,19 @@ std::shared_ptr<spdlog::logger> CreateLogger()
 #ifdef __ANDROID__
     sinks.emplace_back(std::make_shared<spdlog::sinks::android_sink_mt>(
         kLoggerName));
+#elif defined(__PROSPERO__)
+    /* PS5: nothing reads stdout, so log to a file next to the settings. Each
+     * launch starts a fresh file, flushed per line so a crash keeps it. */
+    try
+    {
+        const std::string path =
+            std::string(MikuPan_GetPs5UserDirectory()) + "mikupan.log";
+        sinks.emplace_back(
+            std::make_shared<spdlog::sinks::basic_file_sink_mt>(path, true));
+    }
+    catch (const spdlog::spdlog_ex&)
+    {
+    }
 #else
     sinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
 #endif
@@ -86,7 +105,11 @@ std::shared_ptr<spdlog::logger> CreateLogger()
         kLoggerName, sinks.begin(), sinks.end());
     logger->set_pattern(kPattern);
     logger->set_level(spdlog::level::info);
+#ifdef __PROSPERO__
+    logger->flush_on(spdlog::level::info);
+#else
     logger->flush_on(spdlog::level::warn);
+#endif
     return logger;
 }
 

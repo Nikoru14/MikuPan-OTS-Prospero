@@ -211,7 +211,8 @@ to retain changes. Effects and screen captures keep their original filtering.
 MikuPan cross-builds for a jailbroken PS5 as a native title folder that
 [ShadowMount+](https://github.com/drakmor/ShadowMountPlus) can mount. This is
 early work: the game builds and packages, but SDL3 still uses its dummy video,
-audio and input drivers on the console, so it does not show anything yet.
+audio and input drivers on the console, so it does not show anything yet
+beyond PS5 notifications and its log file.
 
 What you need, on Linux or WSL2:
 
@@ -245,11 +246,16 @@ cmake -B build-ps5 -G Ninja \
 cmake --build build-ps5 --target MikuPan
 ```
 
-The title folder is written to `build-ps5/app/PPSA39390`. Copy
-`IMG_HD.BIN` and `IMG_BD.BIN` from your disc into that folder, then copy the
-whole folder to `/data/homebrew/` (or `homebrew/` on a USB drive) for
-ShadowMount+ to mount. The folder is mounted read-only at `/app0`; settings,
-the baked `IMG_TEX.BIN` and saves go to `/download0/MikuPan`.
+The title folder is written to `build-ps5/app/PPSA39390`. Copy it to
+`/data/homebrew/` (or `homebrew/` on a USB drive) for ShadowMount+ to mount,
+and put `IMG_HD.BIN` and `IMG_BD.BIN` from your disc in `/data/MikuPan/`, like
+other homebrew keeps its files.
+
+Settings, the baked `IMG_TEX.BIN`, saves and `mikupan.log` also go to
+`/data/MikuPan/`. If the title cannot write there, they go to its own
+`/download0/MikuPan/` instead, and the game files can also be placed inside
+the title folder itself (mounted read-only at `/app0`). The title reports its
+progress as PS5 notifications, including which folder it uses.
 
 | Option | Default | Meaning |
 |---|---|---|

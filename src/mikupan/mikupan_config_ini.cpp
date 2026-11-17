@@ -2,6 +2,7 @@
 
 #include "debug/mikupan_logging.h"
 #include "mikupan/io/mikupan_file.h"
+#include "mikupan/mikupan_ps5.h"
 
 #include <SDL3/SDL_filesystem.h>
 #ifdef __ANDROID__
@@ -59,10 +60,10 @@ bool CreateDirectoriesNoThrow(const std::filesystem::path& path,
 std::filesystem::path GetDefaultConfigurationPath()
 {
 #ifdef __PROSPERO__
-    /* PS5 title: /app0 is read-only; /download0 is the title's persistent
-     * writable storage (param.json downloadDataSize > 0). The configuration,
-     * the baked IMG_TEX.BIN and the saves all live under this folder. */
-    return std::filesystem::path("/download0/MikuPan") / "mikupan.ini";
+    /* PS5 title: /app0 is read-only. The configuration, the baked
+     * IMG_TEX.BIN and the saves live in /data/MikuPan when the title can
+     * write there, otherwise in its own /download0/MikuPan. */
+    return std::filesystem::path(MikuPan_GetPs5UserDirectory()) / "mikupan.ini";
 #endif
 
     char *base = SDL_GetPrefPath("Mikompilation", "MikuPan");

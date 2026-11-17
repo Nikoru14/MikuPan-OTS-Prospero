@@ -32,6 +32,7 @@
 #include <mikupan/mikupan_memory.h>
 #include <sce/libpad.h>
 #include <mikupan/mikupan_framelimiter.h>
+#include "mikupan/mikupan_ps5.h"
 
 static int mikupan_game_initialized = 0;
 static int mikupan_missing_data_prompted = 0;
@@ -60,6 +61,11 @@ static int MikuPan_TryInitializeGame(void)
 
         if (!mikupan_missing_data_prompted)
         {
+#ifdef __PROSPERO__
+            MikuPan_Ps5Notify("MikuPan: %s not found. Put IMG_HD.BIN and "
+                              "IMG_BD.BIN in /data/MikuPan/",
+                              mikupan_missing_data_file);
+#endif
             MikuPan_RequestDataFolderSelection(mikupan_missing_data_file);
             mikupan_missing_data_prompted = 1;
         }
@@ -83,14 +89,25 @@ static int MikuPan_TryInitializeGame(void)
     InitSystem();
     InitGameFirst();
     mikupan_game_initialized = 1;
+#ifdef __PROSPERO__
+    MikuPan_Ps5Notify("MikuPan: game data loaded");
+#endif
     return 1;
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
+#ifdef __PROSPERO__
+    MikuPan_Ps5Notify("MikuPan starting. Log: %smikupan.log",
+                      MikuPan_GetPs5UserDirectory());
+#endif
+
     SDL_AppResult result = MikuPan_Init();
     if (result != SDL_APP_CONTINUE)
     {
+#ifdef __PROSPERO__
+        MikuPan_Ps5Notify("MikuPan could not start: %s", SDL_GetError());
+#endif
         return result;
     }
 
@@ -198,6 +215,12 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+#ifdef __PROSPERO__
+    MikuPan_Ps5Notify("MikuPan closed (%s). Last error: %s",
+                      result == SDL_APP_SUCCESS ? "normally" : "after a failure",
+                      SDL_GetError());
+#endif
+
     if (mikupan_game_initialized)
     {
         IopShutDown();

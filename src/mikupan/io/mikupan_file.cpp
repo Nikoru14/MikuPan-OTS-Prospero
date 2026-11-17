@@ -1,5 +1,6 @@
 #include "typedefs.h"
 #include "mikupan_file.h"
+#include "mikupan/mikupan_ps5.h"
 #include "mikupan/mikupan_config.h"
 #include "mikupan/debug/mikupan_logging.h"
 #include "spdlog/spdlog.h"
@@ -43,8 +44,8 @@ extern "C" const char *MikuPan_GetBaseDirectory(void)
     }
 
 #ifdef __PROSPERO__
-    /* PS5 title: the title folder (eboot.bin, resources/ and the game's
-     * IMG_HD.BIN / IMG_BD.BIN) is mounted read-only at /app0. */
+    /* PS5 title: the title folder (eboot.bin and resources/) is mounted
+     * read-only at /app0. */
     cached = "/app0/";
     return cached.c_str();
 #endif
@@ -90,6 +91,61 @@ static std::filesystem::path MikuPan_GetApplicationBasePath()
     return std::filesystem::path(MikuPan_GetBaseDirectory());
 }
 
+#ifdef __PROSPERO__
+/* PS5 homebrew keeps its files under /data, so that is the first choice for
+ * both the game's IMG_HD.BIN / IMG_BD.BIN and everything MikuPan writes. A
+ * title's sandbox may not reach /data, so it is only used once a real write
+ * there succeeds; otherwise MikuPan falls back to the title's own storage. */
+static constexpr const char *kPs5DataFolder = "/data/MikuPan/";
+static constexpr const char *kPs5TitleStorageFolder = "/download0/MikuPan/";
+
+static bool MikuPan_Ps5FolderIsWritable(const char *folder)
+{
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    if (!std::filesystem::is_directory(folder, ec))
+    {
+        return false;
+    }
+
+    const std::string probe = std::string(folder) + ".mikupan_write_test";
+    FILE *file = std::fopen(probe.c_str(), "wb");
+    if (file == nullptr)
+    {
+        return false;
+    }
+
+    const bool written = std::fputc('1', file) != EOF;
+    const bool closed = std::fclose(file) == 0;
+    std::remove(probe.c_str());
+    return written && closed;
+}
+
+extern "C" const char *MikuPan_GetPs5UserDirectory(void)
+{
+    static std::string cached;
+    if (!cached.empty())
+    {
+        return cached.c_str();
+    }
+
+    if (MikuPan_Ps5FolderIsWritable(kPs5DataFolder))
+    {
+        cached = kPs5DataFolder;
+    }
+    else
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(kPs5TitleStorageFolder, ec);
+        cached = kPs5TitleStorageFolder;
+    }
+
+    /* No logging here: the logger itself asks for this folder while it is
+     * being created. */
+    return cached.c_str();
+}
+#endif
+
 static std::filesystem::path MikuPan_GetDataRoot()
 {
     const char *folder = mikupan_configuration.data_folder;
@@ -97,6 +153,19 @@ static std::filesystem::path MikuPan_GetDataRoot()
     {
         return std::filesystem::path(folder);
     }
+
+#ifdef __PROSPERO__
+    /* Prefer /data/MikuPan when the game files are there; otherwise they are
+     * expected inside the title folder at /app0. */
+    {
+        std::error_code ec;
+        const std::filesystem::path data_folder(kPs5DataFolder);
+        if (std::filesystem::exists(data_folder / "IMG_HD.BIN", ec))
+        {
+            return data_folder;
+        }
+    }
+#endif
 
     return MikuPan_GetApplicationBasePath();
 }

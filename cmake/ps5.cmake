@@ -90,7 +90,8 @@ function(mikupan_ps5_title target)
     target_sources(${target} PRIVATE
             "${native}/app_crt.cpp"
             "${native}/cxa_thread_atexit.cpp"
-            "${native}/payload_shims.cpp")
+            "${native}/payload_shims.cpp"
+            "${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp")
 
     # The SDK's compiler wrapper links the WebKit-only libkernel_web unless
     # libkernel is requested; a title binds against libkernel. The console
