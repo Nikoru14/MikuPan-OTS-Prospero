@@ -115,6 +115,7 @@ function(mikupan_ps5_title target)
             "${native}/app_crt.cpp"
             "${MIKUPAN_PS5_DIR}/platform/platform.c"
             "${MIKUPAN_PS5_DIR}/platform/shims.c"
+            "${MIKUPAN_PS5_DIR}/platform/libc_extras.c"
             "${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp")
     target_include_directories(${target} PRIVATE "${MIKUPAN_PS5_DIR}/platform")
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp"
