@@ -73,6 +73,15 @@
  * Camera Obscura, well within the 25-frame raise animation. */
 #define OTS_FINDER_TURN_FRAMES 8
 
+/* After the camera is handed back (an event, a scripted scare, the Camera
+ * Obscura), keep the player's camera angle if Miku is still standing where
+ * she was and facing the same way; otherwise start again behind her. */
+#define OTS_RESUME_MAX_MOVE 300.0f
+#define OTS_RESUME_MAX_TURN_DEG 25.0f
+
+/* plyr_wrk.pr_info.cam_type while the game shows a scripted drama camera. */
+#define OTS_CAM_TYPE_DRAMA 2
+
 #define OTS_MOUSE_RAD_PER_PIXEL 0.0035f
 #define OTS_STICK_DEADZONE 24.0f
 
@@ -122,6 +131,11 @@ static int ots_finder_turn_frames = 0;
 static float ots_finder_turn_step = 0.0f;
 static u_char ots_prev_plyr_mode = 0xff;
 static int ots_hide_model = 0;
+
+/* Orbit remembered from the last frame this camera was active. */
+static int ots_resume_valid = 0;
+static float ots_resume_facing = 0.0f;
+static sceVu0FVECTOR ots_resume_pos = {0.0f, 0.0f, 0.0f, 1.0f};
 static int ots_blend_hide = 0;
 
 /* ------------------------------------------------------------------------ */
@@ -276,6 +290,15 @@ static int OtsIngameModeAllowsCamera(void)
         case INGAME_MODE_SPD_MAP:
         case INGAME_MODE_SPD_OPT:
             return 1;
+        case INGAME_MODE_EVENT:
+            /* Most events (examining an object, a message, picking something
+             * up) set no camera of their own: the original simply kept the
+             * room's fixed angle, so keep ours instead of cutting to it.
+             * Events that do frame something use a drama camera, which the
+             * stock code has just selected this frame; hand those back.
+             * Movies and in-engine scenes lock the camera before we run, and
+             * special events have a mode of their own. */
+            return plyr_wrk.pr_info.cam_type != OTS_CAM_TYPE_DRAMA;
         default:
             return 0;
     }
@@ -618,17 +641,56 @@ static void OtsIdealCamera(sceVu0FVECTOR out_p)
     out_p[3] = 1.0f;
 }
 
+static int OtsCanResume(void)
+{
+    sceVu0FVECTOR pos;
+    float turn;
+
+    if (!ots_resume_valid)
+    {
+        return 0;
+    }
+
+    OtsCopy(pos, plyr_wrk.move_box.pos);
+
+    if (OtsDist(pos, ots_resume_pos) > OTS_RESUME_MAX_MOVE)
+    {
+        return 0;
+    }
+
+    turn = OtsWrap(plyr_wrk.move_box.rot[1] - ots_resume_facing);
+
+    return fabsf(turn) <= DEG2RAD(OTS_RESUME_MAX_TURN_DEG);
+}
+
+static void OtsRememberOrbit(void)
+{
+    OtsCopy(ots_resume_pos, plyr_wrk.move_box.pos);
+    ots_resume_facing = plyr_wrk.move_box.rot[1];
+    ots_resume_valid = 1;
+}
+
 static void OtsActivate(void)
 {
     sceVu0FVECTOR ideal;
 
-    ots_yaw = plyr_wrk.move_box.rot[1];
-    ots_pitch = DEG2RAD(mikupan_over_shoulder_default_pitch_deg);
-    OtsClampPitch();
-    ots_boom = mikupan_over_shoulder_distance;
-    ots_boom_hold = 0;
-    ots_shoulder_scale = 1.0f;
-    ots_hide_model = 0;
+    if (OtsCanResume())
+    {
+        /* Same spot, same facing: carry on with the player's own angle,
+         * distance and shoulder slide.  Only the pivot is re-seated. */
+        ots_boom_hold = 0;
+    }
+    else
+    {
+        ots_yaw = plyr_wrk.move_box.rot[1];
+        ots_pitch = DEG2RAD(mikupan_over_shoulder_default_pitch_deg);
+        OtsClampPitch();
+        ots_boom = mikupan_over_shoulder_distance;
+        ots_boom_hold = 0;
+        ots_shoulder_scale = 1.0f;
+        ots_hide_model = 0;
+    }
+
     OtsTargetPivot(ots_pivot);
     ots_pivot_valid = 1;
     ots_look_idle_frames = OTS_AUTO_FOLLOW_DELAY;
@@ -997,6 +1059,7 @@ void MikuPan_OverShoulderSetEnabled(int enabled)
     {
         ots_was_active = 0;
         ots_last_valid = 0;
+        ots_resume_valid = 0;
     }
 
     mikupan_over_shoulder_enabled = enabled;
@@ -1070,6 +1133,7 @@ int MikuPan_OverShoulderCameraCtrl(void)
 
     ots_was_active = 1;
     ots_prev_plyr_mode = plyr_wrk.mode;
+    OtsRememberOrbit();
 
     return 1;
 }

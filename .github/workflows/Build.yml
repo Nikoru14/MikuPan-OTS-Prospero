@@ -8,7 +8,9 @@ on:
   workflow_dispatch:        # allow building any branch on demand
 
 env:
-  BUILD_TYPE: Release
+  # Debug, as the README recommends: the Release configuration has known
+  # issues. Every build step below reads this, matching the debug presets.
+  BUILD_TYPE: Debug
 
 jobs:
   shaders:
