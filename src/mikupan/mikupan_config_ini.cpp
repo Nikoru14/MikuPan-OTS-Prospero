@@ -303,6 +303,8 @@ bool TryLoadConfigurationFile(const std::filesystem::path& path)
                mikupan_configuration.over_shoulder_camera.smoothing);
     ApplyValue(ini, "over_shoulder_camera", "turn_speed_deg",
                mikupan_configuration.over_shoulder_camera.turn_speed_deg);
+    ApplyValue(ini, "over_shoulder_camera", "scare_camera",
+               mikupan_configuration.over_shoulder_camera.scare_camera);
     ApplyValue(ini, "input", "selected_gamepad_index",
                mikupan_configuration.input.selected_gamepad_index);
     ApplyValue(ini, "input", "rumble_enabled",
@@ -544,6 +546,8 @@ bool TrySaveConfigurationFile(const std::filesystem::path& path)
              mikupan_configuration.over_shoulder_camera.smoothing);
     SetValue(ini, "over_shoulder_camera", "turn_speed_deg",
              mikupan_configuration.over_shoulder_camera.turn_speed_deg);
+    SetValue(ini, "over_shoulder_camera", "scare_camera",
+             mikupan_configuration.over_shoulder_camera.scare_camera);
     SetValue(ini, "input", "selected_gamepad_index",
              mikupan_configuration.input.selected_gamepad_index);
     SetValue(ini, "input", "rumble_enabled",

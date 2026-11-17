@@ -1558,3 +1558,15 @@ msgstr "Altezza telecamera"
 
 msgid "Raise or lower the camera. Low frames Miku from the waist, high looks down over her head."
 msgstr "Alza o abbassa la telecamera. Bassa inquadra Miku dalla vita, alta guarda sopra la sua testa."
+
+msgid "Scare Camera"
+msgstr "Telecamera spaventi"
+
+msgid "Guided"
+msgstr "Guidata"
+
+msgid "Original"
+msgstr "Originale"
+
+msgid "When the game cuts to a scripted angle for a scare or staged moment. Guided turns the camera towards it if it is off screen, Original cuts to the authored shot, Off ignores it."
+msgstr "Quando il gioco passa a un'inquadratura preparata per uno spavento o un momento scenico. Guidata ruota la telecamera verso di essa se è fuori schermo, Originale passa all'inquadratura originale, Disattivato la ignora."

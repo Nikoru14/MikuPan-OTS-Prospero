@@ -1558,3 +1558,15 @@ msgstr "Kamerahöhe"
 
 msgid "Raise or lower the camera. Low frames Miku from the waist, high looks down over her head."
 msgstr "Hebt oder senkt die Kamera. Niedrig zeigt Miku ab der Hüfte, hoch blickt über ihren Kopf hinweg."
+
+msgid "Scare Camera"
+msgstr "Schreckmoment-Kamera"
+
+msgid "Guided"
+msgstr "Geführt"
+
+msgid "Original"
+msgstr "Original"
+
+msgid "When the game cuts to a scripted angle for a scare or staged moment. Guided turns the camera towards it if it is off screen, Original cuts to the authored shot, Off ignores it."
+msgstr "Wenn das Spiel für einen Schreckmoment oder eine inszenierte Szene zu einem festen Blickwinkel wechselt. Geführt dreht die Kamera dorthin, wenn er außerhalb des Bildes liegt, Original wechselt zur ursprünglichen Einstellung, Aus ignoriert ihn."

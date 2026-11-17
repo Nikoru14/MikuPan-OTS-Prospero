@@ -1990,6 +1990,17 @@ void MikuPan_UiDebugMenuRender(void)
                 igSliderFloat("OTS Turn Speed", &mikupan_over_shoulder_turn_speed_deg,
                               1.0f, 30.0f, "%.1f deg/frame", 0);
 
+                {
+                    static const char* scare_modes[] = {"Guided", "Original", "Off"};
+                    int scare_mode = mikupan_over_shoulder_scare_camera;
+
+                    if (igCombo_Str_arr("OTS Scare Camera", &scare_mode, scare_modes,
+                                        MIKUPAN_SCARE_CAMERA_COUNT, -1))
+                    {
+                        mikupan_over_shoulder_scare_camera = scare_mode;
+                    }
+                }
+
                 igTextDisabled("Left stick walks. Right stick/mouse orbits. R3 recentres.");
             }
 

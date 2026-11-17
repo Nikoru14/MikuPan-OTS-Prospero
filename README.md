@@ -19,6 +19,11 @@ auto-follow drift are adjustable there and persist in `mikupan.ini` under
 `[over_shoulder_camera]`. Cutscenes, apparition events and save points keep
 their original cameras.
 
+When the game switches to one of its scripted angles for a scare or staged
+moment, the *Scare Camera* setting decides what happens: **Guided** (default)
+stays over the shoulder but turns towards what the shot frames if it is off
+screen, **Original** cuts to the authored shot, and **Off** ignores it.
+
 # Build
 For now, building in `debug` is highly recommended due to issues related to the `release` build. The build process was made to automatically fetch all required dependencies of the project.
 
