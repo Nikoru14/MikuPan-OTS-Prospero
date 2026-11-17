@@ -1,13 +1,16 @@
 include(FetchContent)
 
 if(PS5)
-    # The console's video, audio and controller drivers (ps5/sdl), registered
-    # with SDL and built when the toolchain says PS5. Applied once: the check
-    # skips a tree that already has it.
-    set(MIKUPAN_SDL_PS5_PATCH "${CMAKE_SOURCE_DIR}/ps5/patches/sdl.patch")
+    # sdl.patch: the console's video, audio and controller drivers (ps5/sdl),
+    # registered with SDL and built when the toolchain says PS5.
+    # sdl-gpu-conformance.patch: SDL_GPU takes RADV, which reports no Vulkan
+    # conformance version on the console yet.
+    # Each is applied once: the check skips a tree that already has it.
     set(MIKUPAN_SDL_PATCH PATCH_COMMAND
-            sh -c "git apply --reverse --check \"$0\" 2>/dev/null || git apply --whitespace=nowarn \"$0\""
-            "${MIKUPAN_SDL_PS5_PATCH}")
+            sh -c "for p in \"$@\"; do git apply --reverse --check \"$p\" 2>/dev/null || git apply --whitespace=nowarn \"$p\" || exit 1; done"
+            sh
+            "${CMAKE_SOURCE_DIR}/ps5/patches/sdl.patch"
+            "${CMAKE_SOURCE_DIR}/ps5/patches/sdl-gpu-conformance.patch")
 else()
     set(MIKUPAN_SDL_PATCH "")
 endif()

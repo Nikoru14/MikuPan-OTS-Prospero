@@ -54,6 +54,11 @@ __attribute__((constructor)) static void MikuPan_Ps5Startup()
     mesa_log = std::string(MikuPan_GetPs5UserDirectory()) + "mesa.log";
     setenv("MESA_LOG_FILE", mesa_log.c_str(), 1);
     setenv("MESA_LOG_LEVEL", "debug", 1);
+    /* RADV's compiled shaders, kept between launches with the rest of
+     * MikuPan's files (its default is the title's own /app0/radv-shader-cache). */
+    static std::string shader_cache;
+    shader_cache = std::string(MikuPan_GetPs5UserDirectory()) + "shader-cache";
+    setenv("MESA_SHADER_CACHE_DIR", shader_cache.c_str(), 1);
 }
 
 /* Called by the title's entry point (ps5/native/app_crt.cpp) when main
