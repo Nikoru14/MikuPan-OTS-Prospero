@@ -1,11 +1,9 @@
 name: Build MikuPan
 
+# Manual only: packages are built by the Release workflow. Run this from the
+# Actions tab to build any branch on demand.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:        # allow building any branch on demand
+  workflow_dispatch:
 
 env:
   # Debug, as the README recommends: the Release configuration has known
