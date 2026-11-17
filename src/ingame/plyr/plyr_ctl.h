@@ -107,6 +107,8 @@ void PlyrMovePad(MOVE_BOX *mb, sceVu0FVECTOR tv);
 void GetMoveSpeed(sceVu0FVECTOR tv);
 void PlyrMovePadV(MOVE_BOX *mb, sceVu0FVECTOR tv);
 void CngPlyrRotRapid(MOVE_BOX *mb, float rot0);
+void PlyrCollisionSetInputState(float pad_rot, u_char run_state, u_char analog_dir);
+u_char PlyrGetStepDirection(void);
 void PlyrMovePadFind(MOVE_BOX *mb, sceVu0FVECTOR tv);
 float GetMovePad(u_char id);
 int MovePadEnableChk(u_char *dir_save);

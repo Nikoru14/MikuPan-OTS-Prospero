@@ -47,6 +47,7 @@
 #include "ingame/camera/camera.h"
 #include "main/glob.h"
 #include "mikupan/gameplay/mikupan_first_person.h"
+#include "mikupan/gameplay/mikupan_over_shoulder.h"
 #include "mikupan/rendering/mikupan_flashlight_dust.h"
 #include "mikupan/rendering/mikupan_renderer.h"
 #include "mikupan/gameplay/mikupan_title_scene.h"
@@ -2913,7 +2914,8 @@ void DrawGirl(int in_mirror)
     draw_source_token = MikuPan_DrawSourcePush(in_mirror != 0 ? MIKUPAN_DRAW_SOURCE_DRAWGIRL_MIRROR : MIKUPAN_DRAW_SOURCE_DRAWGIRL_NORMAL, 0, 0);
     hide_player_model =
         ((plyr_wrk.sta & 0x10) != 0) ||
-        MikuPan_FirstPersonShouldHidePlayerModel();
+        MikuPan_FirstPersonShouldHidePlayerModel() ||
+        MikuPan_OverShoulderShouldHidePlayerModel();
 
     hs = (HeaderSection *)pgirlbase;
     cp = GetCoordP(hs);

@@ -7,6 +7,18 @@ MikuPan is an in progress port of Fatal Frame 1 PS2 to PC running natively, no e
 [![Discord](https://badgen.net/badge/icon/discord?icon=discord&label)](https://discord.gg/Ap4Sfcmwd9)
 ![Downloads](https://img.shields.io/github/downloads/Mikompilation/MikuPan/total)
 
+# Camera view
+The game normally frames each room with its original fixed camera angles. The
+in-game Settings menu (Game page, *Camera* section) can switch the *Camera View*
+to **Over the Shoulder**: a modern follow camera that hangs behind Miku, orbits
+with the right stick or the mouse, pulls in against walls and furniture, and
+walks her wherever the left stick is pushed. Click the right stick to centre it
+behind her; raising the Camera Obscura aims it where the camera was looking.
+Shoulder side, distance, sensitivity, field of view, wall collision and the
+auto-follow drift are adjustable there and persist in `mikupan.ini` under
+`[over_shoulder_camera]`. Cutscenes, apparition events and save points keep
+their original cameras.
+
 # Build
 For now, building in `debug` is highly recommended due to issues related to the `release` build. The build process was made to automatically fetch all required dependencies of the project.
 

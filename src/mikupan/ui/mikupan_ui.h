@@ -114,6 +114,23 @@ const char *MikuPan_GetFlashlightStyleOptionLabel(int index);
 int MikuPan_SelectFlashlightStyleOption(int index);
 int MikuPan_KeepFinderRaisedForApparitionsEnabled(void);
 void MikuPan_SetKeepFinderRaisedForApparitionsEnabled(int enabled);
+#define MIKUPAN_CAMERA_VIEW_FIXED         (0)
+#define MIKUPAN_CAMERA_VIEW_OVER_SHOULDER (1)
+#define MIKUPAN_CAMERA_VIEW_FIRST_PERSON  (2)
+int MikuPan_GetCameraViewOption(void);
+void MikuPan_SelectCameraViewOption(int view);
+int MikuPan_OverShoulderSideLeft(void);
+void MikuPan_SetOverShoulderSideLeft(int left);
+float MikuPan_GetOverShoulderDistance(void);
+void MikuPan_SetOverShoulderDistance(float distance);
+float MikuPan_GetOverShoulderSensitivity(void);
+void MikuPan_SetOverShoulderSensitivity(float sensitivity);
+float MikuPan_GetOverShoulderFov(void);
+void MikuPan_SetOverShoulderFov(float fov_deg);
+int MikuPan_OverShoulderCollisionEnabled(void);
+void MikuPan_SetOverShoulderCollisionEnabled(int enabled);
+int MikuPan_OverShoulderAutoFollowEnabled(void);
+void MikuPan_SetOverShoulderAutoFollowEnabled(int enabled);
 float MikuPan_GetUiFontScale(void);
 void MikuPan_SetUiFontScale(float scale);
 const char *MikuPan_GetDataFolder(void);

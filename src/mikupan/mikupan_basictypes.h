@@ -252,6 +252,24 @@ typedef struct
 
 typedef struct
 {
+    int enabled;
+    int side_left;
+    int collision_enabled;
+    int auto_follow_enabled;
+    float distance;
+    float pivot_height;
+    float side;
+    float fov_deg;
+    float sensitivity;
+    float stick_yaw_speed_deg;
+    float stick_pitch_speed_deg;
+    float default_pitch_deg;
+    float smoothing;
+    float turn_speed_deg;
+} MikuPan_ConfigOverShoulderCamera;
+
+typedef struct
+{
     MikuPan_ConfigRenderer renderer;
     MikuPan_ConfigCrt crt;
     MikuPan_ConfigAudio audio;
@@ -269,6 +287,7 @@ typedef struct
     int text_mods_enabled;
     MikuPan_ConfigThirdPersonCamera third_person_camera;
     MikuPan_ConfigFirstPersonCamera first_person_camera;
+    MikuPan_ConfigOverShoulderCamera over_shoulder_camera;
     MikuPan_ConfigInput input;
     char data_folder[512];
     int album_photo_png_export_enabled;

@@ -1420,6 +1420,63 @@ Page GamePage(void)
             MikuPan_SetHdFontTexturesEnabled(on ? 1 : 0);
         }));
 
+    rows.push_back(Heading("Camera"));
+    {
+        std::function<bool()> over_shoulder = [] {
+            return MikuPan_GetCameraViewOption() == MIKUPAN_CAMERA_VIEW_OVER_SHOULDER;
+        };
+        rows.push_back(Choice(
+            "Camera View",
+            Fixed("Fixed keeps the original cinematic angles. Over the Shoulder follows Miku from behind: the right stick or mouse looks around and the left stick walks where you push. First Person looks through her eyes."),
+            {"Fixed", "Over the Shoulder", "First Person"},
+            [] { return MikuPan_GetCameraViewOption(); },
+            [](int view) { MikuPan_SelectCameraViewOption(view); }));
+        rows.push_back(When(
+            Choice("Shoulder Side", Fixed("Which of Miku's shoulders the camera looks over."),
+                   {"Right", "Left"}, [] { return MikuPan_OverShoulderSideLeft() ? 1 : 0; },
+                   [](int left) { MikuPan_SetOverShoulderSideLeft(left); }),
+            over_shoulder));
+        rows.push_back(When(
+            Neutral(Slider("Camera Distance", Fixed("How far the camera hangs behind Miku."),
+                           300.0f, 1200.0f, 20.0f,
+                           [] { return MikuPan_GetOverShoulderDistance(); },
+                           [](float distance) { MikuPan_SetOverShoulderDistance(distance); },
+                           Format("%.0f")),
+                    620.0f),
+            over_shoulder));
+        rows.push_back(When(
+            Neutral(Slider("Camera Sensitivity",
+                           Fixed("How quickly the right stick and mouse turn the camera."),
+                           0.25f, 3.0f, 0.05f,
+                           [] { return MikuPan_GetOverShoulderSensitivity(); },
+                           [](float value) { MikuPan_SetOverShoulderSensitivity(value); },
+                           Format("%.2fx")),
+                    1.0f),
+            over_shoulder));
+        rows.push_back(When(
+            Neutral(Slider("Camera Field of View",
+                           Fixed("Wider values show more of the room around Miku."),
+                           45.0f, 90.0f, 1.0f, [] { return MikuPan_GetOverShoulderFov(); },
+                           [](float fov) { MikuPan_SetOverShoulderFov(fov); }, Format("%.0f")),
+                    62.0f),
+            over_shoulder));
+        rows.push_back(When(
+            Toggle("Camera Collision",
+                   Fixed("Pull the camera in so walls, doors and furniture never block the view."),
+                   [] { return MikuPan_OverShoulderCollisionEnabled() != 0; },
+                   [](bool on) { MikuPan_SetOverShoulderCollisionEnabled(on ? 1 : 0); }),
+            over_shoulder));
+        rows.push_back(When(
+            Toggle("Camera Auto Follow",
+                   Fixed("Drift back behind Miku while she walks and the right stick is idle."),
+                   [] { return MikuPan_OverShoulderAutoFollowEnabled() != 0; },
+                   [](bool on) { MikuPan_SetOverShoulderAutoFollowEnabled(on ? 1 : 0); }),
+            over_shoulder));
+        rows.push_back(Note(
+            "Click the right stick to centre the camera behind Miku. Raising the Camera Obscura aims it where the camera looks.",
+            over_shoulder));
+    }
+
     rows.push_back(Heading("Interface"));
     rows.push_back(Toggle(
         "Mini Map", Fixed("Show the corner map while exploring."),

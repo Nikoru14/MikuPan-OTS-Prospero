@@ -97,6 +97,22 @@ MikuPan_Config mikupan_configuration = {
         2.0f
     },
     {
+        0,
+        0,
+        1,
+        1,
+        620.0f,
+        560.0f,
+        150.0f,
+        62.0f,
+        1.0f,
+        3.2f,
+        2.2f,
+        -8.0f,
+        0.5f,
+        9.0f
+    },
+    {
         -1,
         1
     },
@@ -308,6 +324,28 @@ static void MikuPan_ConfigurationValidateFirstPersonCamera(
         MikuPan_ClampFloat(fps->stick_pitch_speed_deg, 0.1f, 8.0f);
 }
 
+static void MikuPan_ConfigurationValidateOverShoulderCamera(
+    MikuPan_ConfigOverShoulderCamera* ots)
+{
+    ots->enabled = ots->enabled ? 1 : 0;
+    ots->side_left = ots->side_left ? 1 : 0;
+    ots->collision_enabled = ots->collision_enabled ? 1 : 0;
+    ots->auto_follow_enabled = ots->auto_follow_enabled ? 1 : 0;
+    ots->distance = MikuPan_ClampFloat(ots->distance, 250.0f, 1500.0f);
+    ots->pivot_height = MikuPan_ClampFloat(ots->pivot_height, 200.0f, 900.0f);
+    ots->side = MikuPan_ClampFloat(ots->side, 0.0f, 400.0f);
+    ots->fov_deg = MikuPan_ClampFloat(ots->fov_deg, 40.0f, 100.0f);
+    ots->sensitivity = MikuPan_ClampFloat(ots->sensitivity, 0.1f, 4.0f);
+    ots->stick_yaw_speed_deg =
+        MikuPan_ClampFloat(ots->stick_yaw_speed_deg, 0.1f, 10.0f);
+    ots->stick_pitch_speed_deg =
+        MikuPan_ClampFloat(ots->stick_pitch_speed_deg, 0.1f, 10.0f);
+    ots->default_pitch_deg =
+        MikuPan_ClampFloat(ots->default_pitch_deg, -40.0f, 35.0f);
+    ots->smoothing = MikuPan_ClampFloat(ots->smoothing, 0.0f, 0.9f);
+    ots->turn_speed_deg = MikuPan_ClampFloat(ots->turn_speed_deg, 1.0f, 30.0f);
+}
+
 static void MikuPan_ConfigurationValidateInput(MikuPan_ConfigInput* input)
 {
     input->rumble_enabled = input->rumble_enabled ? 1 : 0;
@@ -360,6 +398,8 @@ void MikuPan_ConfigurationValidate(void)
         &mikupan_configuration.third_person_camera);
     MikuPan_ConfigurationValidateFirstPersonCamera(
         &mikupan_configuration.first_person_camera);
+    MikuPan_ConfigurationValidateOverShoulderCamera(
+        &mikupan_configuration.over_shoulder_camera);
     MikuPan_ConfigurationValidateInput(&mikupan_configuration.input);
 
     mikupan_configuration.selected_theme =

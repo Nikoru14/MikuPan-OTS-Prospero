@@ -26,6 +26,7 @@
 #include "main/glob.h"
 #include "mikupan/io/mikupan_controller.h"
 #include "mikupan/gameplay/mikupan_first_person.h"
+#include "mikupan/gameplay/mikupan_over_shoulder.h"
 #include "os/key_cnf.h"
 
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
@@ -1186,6 +1187,7 @@ void CameraMain()
     CameraDebugClear();
 
     MikuPan_FirstPersonBeginFrame();
+    MikuPan_OverShoulderBeginFrame();
 
     if (dbg_wrk.cam_mode == 1 && DBG_cam_id_move_chk == 0)
     {
@@ -1293,6 +1295,9 @@ void CameraMain()
     plyr_wrk.pr_info.camera_drm_old = plyr_wrk.pr_info.camera_drm;
 
     if (MikuPan_FirstPersonCameraCtrl())
+    {
+    }
+    else if (MikuPan_OverShoulderCameraCtrl())
     {
     }
     else if (camera_third_person_enabled && CameraThirdPersonCanOverride())
