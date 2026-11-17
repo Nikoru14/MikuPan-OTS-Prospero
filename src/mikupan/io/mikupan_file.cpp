@@ -107,10 +107,8 @@ static std::filesystem::path MikuPan_GetApplicationBasePath()
 static constexpr const char *kPs5DataFolder = "/data/MikuPan/";
 static constexpr const char *kPs5TitleStorageFolder = "/download0/MikuPan/";
 
-/* A file's size by opening it, or -1. On the console, std::filesystem's
- * answers come from stat, which the title's libc may not answer as a desktop
- * does; opening the file is what loading it does anyway. Logs what stat and
- * fopen said when the file cannot be found, to tell the two apart. */
+/* A file's size by opening it, or -1. Logs what fopen and stat said when the
+ * file cannot be opened. */
 static long long MikuPan_Ps5FileSize(const std::string &path)
 {
     FILE *file = std::fopen(path.c_str(), "rb");
@@ -222,8 +220,9 @@ static std::string MikuPan_Ps5ResolveCase(const std::string &path)
 #endif // __PROSPERO__
 
 /* std::filesystem's existence and size checks, except on the console, where
- * stat answers EINVAL to libc++ (MikuPan's log: "Failed to check configuration
- * file mikupan.ini: Invalid argument") and the files are opened instead. */
+ * the files are opened instead, as loading them does: a title has no working
+ * directory (a relative path gets EINVAL), and whether its stat answers
+ * std::filesystem as a desktop does is not yet known (see MikuPan_GetDataRoot). */
 static bool MikuPan_FsExists(const std::filesystem::path &path, std::error_code &error)
 {
 #ifdef __PROSPERO__
@@ -335,9 +334,22 @@ static std::filesystem::path MikuPan_GetDataRoot()
     {
         std::error_code ec;
         const std::filesystem::path data_folder(kPs5DataFolder);
-        if (MikuPan_FsExists(
-                MikuPan_Ps5ResolveCase(std::string(kPs5DataFolder) + "IMG_HD.BIN"), ec))
+        const std::string img_hd =
+            MikuPan_Ps5ResolveCase(std::string(kPs5DataFolder) + "IMG_HD.BIN");
+        if (MikuPan_FsExists(img_hd, ec))
         {
+            /* Once: does libc++'s stat-based std::filesystem see the file? */
+            static bool checked = false;
+            if (!checked)
+            {
+                checked = true;
+                std::error_code fs_error;
+                const uintmax_t fs_size = std::filesystem::file_size(img_hd, fs_error);
+                info_log("PS5: std::filesystem::file_size(%s) = %llu (%s); opened: %lld bytes",
+                         img_hd.c_str(), (unsigned long long)fs_size,
+                         fs_error ? fs_error.message().c_str() : "ok",
+                         MikuPan_Ps5FileSize(img_hd));
+            }
             return data_folder;
         }
         static bool listed = false;

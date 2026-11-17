@@ -48,7 +48,8 @@ bool CreateDirectoriesNoThrow(const std::filesystem::path& path,
                               const char *context)
 {
 #ifdef __PROSPERO__
-    /* libc++ cannot stat on the console: an existing folder will do */
+    /* an existing folder will do (found by opening it, as on the console the
+     * files' existence is checked) */
     if (MikuPan_Ps5PathExists(path.string().c_str()))
     {
         return true;
