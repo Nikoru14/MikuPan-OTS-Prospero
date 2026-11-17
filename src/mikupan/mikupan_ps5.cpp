@@ -42,6 +42,8 @@ extern "C" void MikuPan_Ps5Notify(const char *fmt, ...)
 extern "C" int sceKernelUsleep(unsigned int microseconds);
 extern "C" int sceSystemServiceLoadExec(const char *path, const char *const *argv);
 
+extern "C" void MikuPan_Ps5InstallCrashHandler(void);
+
 /* Before main (and before SDL starts): standard error into klog and the
  * shell's splash screen dismissed, which otherwise covers every frame
  * (ps5/platform/platform.c). */
@@ -59,6 +61,7 @@ __attribute__((constructor)) static void MikuPan_Ps5Startup()
     static std::string shader_cache;
     shader_cache = std::string(MikuPan_GetPs5UserDirectory()) + "shader-cache";
     setenv("MESA_SHADER_CACHE_DIR", shader_cache.c_str(), 1);
+    MikuPan_Ps5InstallCrashHandler();
 }
 
 /* Called by the title's entry point (ps5/native/app_crt.cpp) when main
@@ -271,4 +274,156 @@ extern "C" void MikuPan_Ps5VulkanReport(void)
     info_log("Vulkan report: done");
     MikuPan_FlushLog();
 #undef PS5_VK
+}
+
+/* ------------------------------------------------------------ crash report */
+
+#include <ps5platform/context.h>
+
+#include <exception>
+#include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
+#include <unistd.h>
+
+namespace
+{
+char g_crash_path[512];
+
+/* One line to crash.log, opened for each line so nothing is lost if the
+ * report itself faults. snprintf is not async-signal-safe, but the title is
+ * going down anyway. */
+void CrashLine(const char *fmt, ...)
+{
+    char line[512];
+    va_list args;
+    va_start(args, fmt);
+    const int length = std::vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+    if (length <= 0)
+    {
+        return;
+    }
+    const int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0)
+    {
+        return;
+    }
+    (void)write(fd, line, (size_t)(length < (int)sizeof(line) ? length : (int)sizeof(line) - 1));
+    (void)write(fd, "\n", 1);
+    close(fd);
+}
+
+void CrashHeader(const char *what)
+{
+    CrashLine("MikuPan crashed: %s", what);
+    /* Its link-time address is in the ELF's symbol table: the difference is
+     * where the console loaded the title. */
+    CrashLine("anchor MikuPan_Ps5Notify = %p", (void *)&MikuPan_Ps5Notify);
+    CrashLine("thread %p", (void *)pthread_self());
+}
+
+void CrashHandler(int signal_number, siginfo_t *info, void *context)
+{
+    const auto *uc = static_cast<const ucontext_t *>(context);
+    const mcontext_t &mc = uc->uc_mcontext;
+    char what[96];
+    std::snprintf(what, sizeof(what), "signal %d, code %d, address %p", signal_number,
+                  info ? info->si_code : 0, info ? info->si_addr : nullptr);
+    CrashHeader(what);
+    CrashLine("rip %#llx rsp %#llx rbp %#llx", (unsigned long long)mc.mc_rip,
+              (unsigned long long)mc.mc_rsp, (unsigned long long)mc.mc_rbp);
+    CrashLine("rax %#llx rbx %#llx rcx %#llx rdx %#llx", (unsigned long long)mc.mc_rax,
+              (unsigned long long)mc.mc_rbx, (unsigned long long)mc.mc_rcx,
+              (unsigned long long)mc.mc_rdx);
+    CrashLine("rsi %#llx rdi %#llx r8 %#llx r9 %#llx", (unsigned long long)mc.mc_rsi,
+              (unsigned long long)mc.mc_rdi, (unsigned long long)mc.mc_r8,
+              (unsigned long long)mc.mc_r9);
+
+    /* The frame-pointer chain, kept to frames that lie above the stack
+     * pointer and grow upwards, so a broken chain ends the walk. */
+    CrashLine("frame 0 %#llx", (unsigned long long)mc.mc_rip);
+    const uintptr_t stack = (uintptr_t)mc.mc_rsp;
+    uintptr_t frame = (uintptr_t)mc.mc_rbp;
+    for (int i = 1; i < 64; i++)
+    {
+        if (frame == 0 || (frame & 7) != 0 || frame < stack || frame - stack > (64u << 20))
+        {
+            break;
+        }
+        const uintptr_t *slot = reinterpret_cast<const uintptr_t *>(frame);
+        const uintptr_t return_address = slot[1];
+        if (return_address == 0)
+        {
+            break;
+        }
+        CrashLine("frame %d %#llx", i, (unsigned long long)return_address);
+        const uintptr_t next = slot[0];
+        if (next <= frame)
+        {
+            break;
+        }
+        frame = next;
+    }
+    CrashLine("end");
+
+    /* Let the console report it as usual */
+    struct sigaction fallback = {};
+    fallback.sa_handler = SIG_DFL;
+    sigemptyset(&fallback.sa_mask);
+    sigaction(signal_number, &fallback, nullptr);
+    raise(signal_number);
+}
+
+void TerminateHandler()
+{
+    const char *what = "std::terminate (no active exception)";
+    std::string message;
+    if (std::exception_ptr current = std::current_exception())
+    {
+        try
+        {
+            std::rethrow_exception(current);
+        }
+        catch (const std::exception &exception)
+        {
+            message = std::string("uncaught exception: ") + exception.what();
+            what = message.c_str();
+        }
+        catch (...)
+        {
+            what = "uncaught exception of an unknown type";
+        }
+    }
+    CrashHeader(what);
+    CrashLine("end");
+    info_log("MikuPan crashed: %s", what);
+    MikuPan_FlushLog();
+    std::abort();
+}
+
+alignas(16) char g_crash_stack[128 * 1024];
+} // namespace
+
+extern "C" void MikuPan_Ps5InstallCrashHandler(void)
+{
+    std::snprintf(g_crash_path, sizeof(g_crash_path), "%scrash.log",
+                  MikuPan_GetPs5UserDirectory());
+    unlink(g_crash_path);
+
+    /* Its own stack, so a stack overflow can still be reported */
+    stack_t alternate = {};
+    alternate.ss_sp = g_crash_stack;
+    alternate.ss_size = sizeof(g_crash_stack);
+    sigaltstack(&alternate, nullptr);
+
+    struct sigaction action = {};
+    action.sa_sigaction = CrashHandler;
+    action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&action.sa_mask);
+    for (int signal_number : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP})
+    {
+        sigaction(signal_number, &action, nullptr);
+    }
+    std::set_terminate(TerminateHandler);
 }

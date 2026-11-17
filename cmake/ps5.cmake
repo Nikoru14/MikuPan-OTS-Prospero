@@ -53,6 +53,9 @@ set(SDL_PS5_PLATFORM_DIR "${MIKUPAN_PS5_DIR}/platform" CACHE INTERNAL "")
 # title's CRT runs them first to last, so a file's static initializers would
 # run backwards; ps5/tools/cc-init-array.sh compiles with an init array.
 set(CMAKE_C_COMPILER_LAUNCHER sh "${MIKUPAN_PS5_DIR}/tools/cc-init-array.sh")
+# Frame pointers everywhere, so the crash report (src/mikupan/mikupan_ps5.cpp)
+# can walk the stack.
+add_compile_options(-fno-omit-frame-pointer)
 set(CMAKE_CXX_COMPILER_LAUNCHER sh "${MIKUPAN_PS5_DIR}/tools/cc-init-array.sh")
 
 # --- RADV --------------------------------------------------------------------
