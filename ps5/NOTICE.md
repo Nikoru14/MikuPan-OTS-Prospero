@@ -63,6 +63,9 @@ From [PS5_Dusklight](https://github.com/griches/PS5_Dusklight) at commit
 
 ## MikuPan's own
 
+`platform/libc_extras.c` defines the libc functions (`timegm`, `readlink`,
+`mkstemp`, `link`, `symlink`) that the platform layer at PS5_Vulkan's SDK pin
+lacks, licensed like the rest of MikuPan.
 `sce_sys/icon0.png` is the MikuPan logo scaled to the 512x512 icon size.
 `sce_sys/param.json.in` follows the layout of the boilerplate's and the
 OpenLF2 PS5 port's `param.json`.
