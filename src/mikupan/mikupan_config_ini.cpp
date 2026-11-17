@@ -698,11 +698,21 @@ extern "C" void MikuPan_LoadConfiguration(const char *filename)
                  default_path.generic_string().c_str());
         if (!TryLoadConfigurationFile(default_path))
         {
+#ifndef __PROSPERO__
+            /* (a title has no working directory to look in) */
             TryLoadConfigurationFile("mikupan.ini");
+#endif
         }
     }
 
+#ifdef __PROSPERO__
+    /* Left empty, the data folder is chosen at each launch: /data/MikuPan
+     * when the game files are there, else the title's own folder
+     * (MikuPan_GetDataRoot in mikupan_file.cpp). */
+    if (false)
+#else
     if (mikupan_configuration.data_folder[0] == '\0')
+#endif
     {
 #ifdef __ANDROID__
         const char *base = SDL_GetAndroidExternalStoragePath();
