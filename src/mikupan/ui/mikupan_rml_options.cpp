@@ -1445,6 +1445,15 @@ Page GamePage(void)
                     620.0f),
             over_shoulder));
         rows.push_back(When(
+            Neutral(Slider("Camera Height",
+                           Fixed("Raise or lower the camera. Low frames Miku from the waist, high looks down over her head."),
+                           300.0f, 850.0f, 10.0f,
+                           [] { return MikuPan_GetOverShoulderHeight(); },
+                           [](float height) { MikuPan_SetOverShoulderHeight(height); },
+                           Format("%.0f")),
+                    560.0f),
+            over_shoulder));
+        rows.push_back(When(
             Neutral(Slider("Camera Sensitivity",
                            Fixed("How quickly the right stick and mouse turn the camera."),
                            0.25f, 3.0f, 0.05f,
@@ -1462,7 +1471,7 @@ Page GamePage(void)
             over_shoulder));
         rows.push_back(When(
             Toggle("Camera Collision",
-                   Fixed("Pull the camera in so walls, doors and furniture never block the view."),
+                   Fixed("Pull the camera in so walls, doors and large furniture never block the view. Thin props such as ropes are looked through."),
                    [] { return MikuPan_OverShoulderCollisionEnabled() != 0; },
                    [](bool on) { MikuPan_SetOverShoulderCollisionEnabled(on ? 1 : 0); }),
             over_shoulder));

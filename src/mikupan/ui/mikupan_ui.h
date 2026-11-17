@@ -123,6 +123,8 @@ int MikuPan_OverShoulderSideLeft(void);
 void MikuPan_SetOverShoulderSideLeft(int left);
 float MikuPan_GetOverShoulderDistance(void);
 void MikuPan_SetOverShoulderDistance(float distance);
+float MikuPan_GetOverShoulderHeight(void);
+void MikuPan_SetOverShoulderHeight(float height);
 float MikuPan_GetOverShoulderSensitivity(void);
 void MikuPan_SetOverShoulderSensitivity(float sensitivity);
 float MikuPan_GetOverShoulderFov(void);

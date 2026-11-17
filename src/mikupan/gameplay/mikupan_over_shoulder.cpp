@@ -28,19 +28,36 @@
  * interest point stable however short the boom becomes. */
 #define OTS_LOOK_DISTANCE 1000.0f
 
-/* Collision probing along the shoulder offset and the boom. */
-#define OTS_SHOULDER_STEPS 6
-#define OTS_BOOM_STEP 30.0f
-#define OTS_BOOM_MARGIN 25.0f
-#define OTS_BOOM_EASE_OUT 0.10f
+/* Collision probing.  Samples march along the shoulder offset and the boom
+ * and the first blocked sample is then refined by bisection, so the free
+ * distance changes continuously as Miku moves instead of in steps. */
+#define OTS_PROBE_STEP 20.0f
+#define OTS_REFINE_ITERATIONS 6
+#define OTS_WALL_MARGIN 45.0f
+#define OTS_SHOULDER_MARGIN 35.0f
+
+/* Furniture thinner than this along the boom (ropes, poles, hanging cloth)
+ * is passed through instead of pulling the camera in. */
+#define OTS_THIN_PROP 160.0f
+
+/* Smoothing.  Walls clamp at once so the camera never sees through them;
+ * everything else eases.  After any pull-in the camera holds its distance
+ * for a moment before easing back out, so narrow corridors don't pump. */
+#define OTS_BOOM_PROP_PULL_RATE 0.12f
+#define OTS_BOOM_EASE_OUT 0.06f
+#define OTS_BOOM_HOLD_FRAMES 20
+#define OTS_SHOULDER_PULL_RATE 0.30f
+#define OTS_SHOULDER_EASE_OUT 0.05f
 
 /* Keep the camera between these heights above Miku's feet (world Y points
  * down, so "above" is negative). */
 #define OTS_MIN_HEIGHT 60.0f
-#define OTS_MAX_HEIGHT 1000.0f
+#define OTS_MAX_HEIGHT 1300.0f
 
-/* Below this boom length the camera sits inside Miku's shoulder. */
-#define OTS_HIDE_MODEL_BOOM 160.0f
+/* Below this boom length the camera sits inside Miku's shoulder.  The gap
+ * between the two values stops the model flickering at the threshold. */
+#define OTS_HIDE_MODEL_BOOM 140.0f
+#define OTS_SHOW_MODEL_BOOM 200.0f
 
 /* Blend from the previous camera when it was close enough to be the same
  * shot, e.g. lowering the Camera Obscura. */
@@ -83,6 +100,8 @@ static int ots_ctrl_ran = 0;
 static float ots_yaw = 0.0f;
 static float ots_pitch = 0.0f;
 static float ots_boom = 0.0f;
+static int ots_boom_hold = 0;
+static float ots_shoulder_scale = 1.0f;
 static sceVu0FVECTOR ots_pivot = {0.0f, 0.0f, 0.0f, 1.0f};
 static int ots_pivot_valid = 0;
 
@@ -103,6 +122,7 @@ static int ots_finder_turn_frames = 0;
 static float ots_finder_turn_step = 0.0f;
 static u_char ots_prev_plyr_mode = 0xff;
 static int ots_hide_model = 0;
+static int ots_blend_hide = 0;
 
 /* ------------------------------------------------------------------------ */
 /* Small helpers                                                            */
@@ -331,22 +351,26 @@ static int OtsCanOwnGameplay(void)
 /* Collision                                                                */
 /* ------------------------------------------------------------------------ */
 
-/* A point is blocked when it lies outside every room of the current floor
- * or inside one of the wall, door or furniture areas Miku herself cannot
- * walk into.  Those areas are the only collision data the game has, which
- * keeps the camera in walkable space and therefore out of the walls. */
-static int OtsPointBlocked(const sceVu0FVECTOR p)
+#define OTS_FREE 0
+#define OTS_SOFT 1
+#define OTS_HARD 2
+
+/* Classifies a point against the only collision data the game has: the
+ * room outlines and the wall, door and furniture areas Miku cannot walk
+ * into.  Outside every room, walls and doors are hard; furniture is soft
+ * because it is often thin (a rope, a pole) or low enough to see over. */
+static int OtsPointClass(const sceVu0FVECTOR p)
 {
     sceVu0FVECTOR q;
 
     if (p[0] < 0.0f || p[0] > 65535.0f || p[2] < 0.0f || p[2] > 65535.0f)
     {
-        return 1;
+        return OTS_HARD;
     }
 
     if (GetPointRoomNo((u_short)p[0], (u_short)p[2]) == 0xff)
     {
-        return 1;
+        return OTS_HARD;
     }
 
     q[0] = p[0];
@@ -354,66 +378,190 @@ static int OtsPointBlocked(const sceVu0FVECTOR p)
     q[2] = p[2];
     q[3] = 1.0f;
 
-    return HitChkSegment2All(q, q, 1.0f) != 0;
+    switch (HitChkSegment2All(q, q, 1.0f))
+    {
+        case 0:
+            return OTS_FREE;
+        case 3:
+            return OTS_SOFT;
+        default:
+            return OTS_HARD;
+    }
 }
 
-/* Largest fraction of `offset` that can be added to `from` before the first
- * blocked sample. */
-static float OtsFreeFraction(const sceVu0FVECTOR from, const sceVu0FVECTOR offset,
-                             int steps)
+static void OtsAlong(sceVu0FVECTOR out, const sceVu0FVECTOR from,
+                     const sceVu0FVECTOR dir, float t)
+{
+    out[0] = from[0] + dir[0] * t;
+    out[1] = from[1] + dir[1] * t;
+    out[2] = from[2] + dir[2] * t;
+    out[3] = 1.0f;
+}
+
+/* Bisects between a distance known to be clear and one known to hit
+ * something of at least class `min_class`. */
+static float OtsRefine(const sceVu0FVECTOR from, const sceVu0FVECTOR dir,
+                       float clear, float hit, int min_class)
 {
     sceVu0FVECTOR p;
     int k;
 
-    for (k = 1; k <= steps; k++)
+    for (k = 0; k < OTS_REFINE_ITERATIONS; k++)
     {
-        float t = (float)k / (float)steps;
+        float mid = (clear + hit) * 0.5f;
 
-        p[0] = from[0] + offset[0] * t;
-        p[1] = from[1] + offset[1] * t;
-        p[2] = from[2] + offset[2] * t;
-        p[3] = 1.0f;
+        OtsAlong(p, from, dir, mid);
 
-        if (OtsPointBlocked(p))
+        if (OtsPointClass(p) >= min_class)
         {
-            return (float)(k - 1) / (float)steps;
+            hit = mid;
+        }
+        else
+        {
+            clear = mid;
         }
     }
 
-    return 1.0f;
+    return clear;
 }
 
-/* Longest boom along `dir` (unit length) from `from` that stays clear. */
-static float OtsFreeBoom(const sceVu0FVECTOR from, const sceVu0FVECTOR dir,
-                         float length)
+/* Distance along `dir` (unit length) from `from` to the first sample of at
+ * least class `min_class`, or `length` when the whole way is clear. */
+static float OtsFirstHit(const sceVu0FVECTOR from, const sceVu0FVECTOR dir,
+                         float length, int min_class)
 {
     sceVu0FVECTOR p;
     float travelled = 0.0f;
 
     while (travelled < length)
     {
-        float next = travelled + OTS_BOOM_STEP;
+        float next = travelled + OTS_PROBE_STEP;
 
         if (next > length)
         {
             next = length;
         }
 
-        p[0] = from[0] + dir[0] * next;
-        p[1] = from[1] + dir[1] * next;
-        p[2] = from[2] + dir[2] * next;
-        p[3] = 1.0f;
+        OtsAlong(p, from, dir, next);
 
-        if (OtsPointBlocked(p))
+        if (OtsPointClass(p) >= min_class)
         {
-            travelled -= OTS_BOOM_MARGIN;
-            return travelled < 0.0f ? 0.0f : travelled;
+            return OtsRefine(from, dir, travelled, next, min_class);
         }
 
         travelled = next;
     }
 
     return length;
+}
+
+/* How far the camera may hang back along `dir` before it would sit in a
+ * wall (returned), and before it would sit inside a piece of furniture too
+ * thick to look through (`prop_out`, never more than the wall limit). */
+static float OtsFreeBoom(const sceVu0FVECTOR from, const sceVu0FVECTOR dir,
+                         float length, float* prop_out)
+{
+    sceVu0FVECTOR p;
+    float wall;
+    float boom;
+    float back;
+    float front;
+
+    wall = OtsFirstHit(from, dir, length, OTS_HARD);
+
+    if (wall < length)
+    {
+        wall -= OTS_WALL_MARGIN;
+    }
+
+    boom = wall < 0.0f ? 0.0f : wall;
+
+    /* Thin props along the way are ignored; only care whether the camera
+     * itself ends up inside furniture. */
+    OtsAlong(p, from, dir, boom);
+
+    *prop_out = boom;
+
+    if (boom <= 0.0f || OtsPointClass(p) != OTS_SOFT)
+    {
+        return boom;
+    }
+
+    /* Measure the prop along the boom: where it starts in front of the
+     * camera and where it ends behind it. */
+    front = boom;
+    while (front > 0.0f)
+    {
+        front -= OTS_PROBE_STEP;
+        OtsAlong(p, from, dir, front < 0.0f ? 0.0f : front);
+
+        if (OtsPointClass(p) == OTS_FREE)
+        {
+            break;
+        }
+    }
+
+    back = boom;
+    while (back < boom + OTS_THIN_PROP)
+    {
+        back += OTS_PROBE_STEP;
+        OtsAlong(p, from, dir, back);
+
+        if (OtsPointClass(p) == OTS_FREE)
+        {
+            break;
+        }
+    }
+
+    if (back - front < OTS_THIN_PROP)
+    {
+        return boom;
+    }
+
+    if (front <= 0.0f)
+    {
+        *prop_out = 0.0f;
+        return boom;
+    }
+
+    /* Thick furniture: stop just in front of it. */
+    front = OtsRefine(from, dir, front, front + OTS_PROBE_STEP, OTS_SOFT)
+            - OTS_WALL_MARGIN * 0.5f;
+
+    *prop_out = front < 0.0f ? 0.0f : front;
+
+    return boom;
+}
+
+/* Fraction of the shoulder offset that stays clear of walls. */
+static float OtsFreeShoulder(const sceVu0FVECTOR from, const sceVu0FVECTOR offset)
+{
+    sceVu0FVECTOR dir;
+    float length = sqrtf(offset[0] * offset[0] + offset[2] * offset[2]);
+    float free_len;
+
+    if (length <= 1.0f)
+    {
+        return 1.0f;
+    }
+
+    dir[0] = offset[0] / length;
+    dir[1] = 0.0f;
+    dir[2] = offset[2] / length;
+    dir[3] = 0.0f;
+
+    /* Look a margin past the offset so the camera keeps clear of the wall
+     * it is beside, not just out of it. */
+    free_len = OtsFirstHit(from, dir, length + OTS_SHOULDER_MARGIN, OTS_HARD);
+
+    if (free_len >= length + OTS_SHOULDER_MARGIN)
+    {
+        return 1.0f;
+    }
+
+    free_len -= OTS_SHOULDER_MARGIN;
+
+    return OtsClamp(free_len / length, 0.0f, 1.0f);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -478,6 +626,9 @@ static void OtsActivate(void)
     ots_pitch = DEG2RAD(mikupan_over_shoulder_default_pitch_deg);
     OtsClampPitch();
     ots_boom = mikupan_over_shoulder_distance;
+    ots_boom_hold = 0;
+    ots_shoulder_scale = 1.0f;
+    ots_hide_model = 0;
     OtsTargetPivot(ots_pivot);
     ots_pivot_valid = 1;
     ots_look_idle_frames = OTS_AUTO_FOLLOW_DELAY;
@@ -675,6 +826,7 @@ static void OtsBuildCamera(void)
     sceVu0FVECTOR start;
     float follow;
     float allowed;
+    float prop_allowed;
     float min_y;
     float max_y;
 
@@ -702,33 +854,72 @@ static void OtsBuildCamera(void)
     back[2] = -forward[2];
     back[3] = 0.0f;
 
-    if (mikupan_over_shoulder_collision_enabled)
     {
-        float scale = OtsFreeFraction(ots_pivot, shoulder, OTS_SHOULDER_STEPS);
+        float scale_target = 1.0f;
 
-        shoulder[0] *= scale;
-        shoulder[1] *= scale;
-        shoulder[2] *= scale;
+        if (mikupan_over_shoulder_collision_enabled)
+        {
+            scale_target = OtsFreeShoulder(ots_pivot, shoulder);
+        }
+
+        /* The smoothed offset eases towards the clear fraction, quickly in
+         * and slowly out.  The camera uses whichever is smaller, so it is
+         * always clear of the wall yet never pops back out. */
+        if (scale_target < ots_shoulder_scale)
+        {
+            ots_shoulder_scale +=
+                (scale_target - ots_shoulder_scale) * OTS_SHOULDER_PULL_RATE;
+        }
+        else
+        {
+            ots_shoulder_scale +=
+                (scale_target - ots_shoulder_scale) * OTS_SHOULDER_EASE_OUT;
+        }
+
+        ots_shoulder_scale = OtsClamp(ots_shoulder_scale, 0.0f, 1.0f);
+
+        {
+            float scale = ots_shoulder_scale < scale_target ? ots_shoulder_scale
+                                                            : scale_target;
+
+            shoulder[0] *= scale;
+            shoulder[1] *= scale;
+            shoulder[2] *= scale;
+        }
     }
 
     sceVu0AddVector(start, ots_pivot, shoulder);
     start[3] = 1.0f;
 
     allowed = mikupan_over_shoulder_distance;
+    prop_allowed = allowed;
 
     if (mikupan_over_shoulder_collision_enabled)
     {
-        allowed = OtsFreeBoom(start, back, allowed);
+        allowed = OtsFreeBoom(start, back, allowed, &prop_allowed);
     }
 
-    /* Pull in at once so nothing ever clips, ease back out. */
-    if (allowed < ots_boom)
+    if (ots_boom > allowed)
     {
+        /* A wall: never let the camera end up behind it, or the room beyond
+         * would clip into view. */
         ots_boom = allowed;
+        ots_boom_hold = OTS_BOOM_HOLD_FRAMES;
+    }
+
+    if (prop_allowed < ots_boom)
+    {
+        /* Furniture: glide in rather than snap. */
+        ots_boom += (prop_allowed - ots_boom) * OTS_BOOM_PROP_PULL_RATE;
+        ots_boom_hold = OTS_BOOM_HOLD_FRAMES;
+    }
+    else if (ots_boom_hold > 0)
+    {
+        ots_boom_hold--;
     }
     else
     {
-        ots_boom += (allowed - ots_boom) * OTS_BOOM_EASE_OUT;
+        ots_boom += (prop_allowed - ots_boom) * OTS_BOOM_EASE_OUT;
     }
 
     camera.p[0] = start[0] + back[0] * ots_boom;
@@ -752,12 +943,21 @@ static void OtsBuildCamera(void)
 
     plyr_wrk.prot = ots_yaw;
 
-    ots_hide_model = ots_boom < OTS_HIDE_MODEL_BOOM;
+    if (ots_boom < OTS_HIDE_MODEL_BOOM)
+    {
+        ots_hide_model = 1;
+    }
+    else if (ots_boom > OTS_SHOW_MODEL_BOOM)
+    {
+        ots_hide_model = 0;
+    }
 }
 
 static void OtsApplyBlend(void)
 {
     float t;
+
+    ots_blend_hide = 0;
 
     if (ots_blend_frames <= 0)
     {
@@ -770,10 +970,7 @@ static void OtsApplyBlend(void)
     OtsLerp(camera.p, camera.p, ots_blend_p, t);
     OtsLerp(camera.i, camera.i, ots_blend_i, t);
 
-    if (OtsDist(camera.p, ots_pivot) < 220.0f)
-    {
-        ots_hide_model = 1;
-    }
+    ots_blend_hide = OtsDist(camera.p, ots_pivot) < 220.0f;
 
     ots_blend_frames--;
 }
@@ -809,6 +1006,7 @@ void MikuPan_OverShoulderSetEnabled(int enabled)
         ots_active = 0;
         ots_was_active = 0;
         ots_hide_model = 0;
+        ots_blend_hide = 0;
     }
 }
 
@@ -828,7 +1026,6 @@ void MikuPan_OverShoulderBeginFrame(void)
 
     ots_ctrl_ran = 0;
     ots_active = 0;
-    ots_hide_model = 0;
 
     OtsCopy(ots_last_p, camera.p);
     OtsCopy(ots_last_i, camera.i);
@@ -1048,5 +1245,5 @@ int MikuPan_OverShoulderOwnsMovement(void)
 
 int MikuPan_OverShoulderShouldHidePlayerModel(void)
 {
-    return ots_active && ots_hide_model;
+    return ots_active && (ots_hide_model || ots_blend_hide);
 }
