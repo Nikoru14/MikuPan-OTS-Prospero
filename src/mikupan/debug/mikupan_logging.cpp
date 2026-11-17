@@ -85,14 +85,18 @@ std::shared_ptr<spdlog::logger> CreateLogger()
     sinks.emplace_back(std::make_shared<spdlog::sinks::android_sink_mt>(
         kLoggerName));
 #elif defined(__PROSPERO__)
-    /* PS5: nothing reads stdout, so log to a file next to the settings. Each
-     * launch starts a fresh file, flushed per line so a crash keeps it. */
+    /* PS5: nothing reads stdout, so log to a file next to the settings,
+     * flushed per line so a crash keeps it. The logger can be created again
+     * after shutdown (the final notification logs too), so only the first
+     * creation in a launch starts a fresh file; later ones append. */
     try
     {
+        static bool started_this_launch = false;
         const std::string path =
             std::string(MikuPan_GetPs5UserDirectory()) + "mikupan.log";
-        sinks.emplace_back(
-            std::make_shared<spdlog::sinks::basic_file_sink_mt>(path, true));
+        sinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+            path, !started_this_launch));
+        started_this_launch = true;
     }
     catch (const spdlog::spdlog_ex&)
     {
