@@ -42,6 +42,13 @@ extern "C" const char *MikuPan_GetBaseDirectory(void)
         return cached.c_str();
     }
 
+#ifdef __PROSPERO__
+    /* PS5 title: the title folder (eboot.bin, resources/ and the game's
+     * IMG_HD.BIN / IMG_BD.BIN) is mounted read-only at /app0. */
+    cached = "/app0/";
+    return cached.c_str();
+#endif
+
     const char *base = SDL_GetBasePath();
     cached = (base != nullptr && base[0] != '\0') ? base : "./";
 

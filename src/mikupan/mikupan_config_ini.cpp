@@ -58,6 +58,13 @@ bool CreateDirectoriesNoThrow(const std::filesystem::path& path,
 
 std::filesystem::path GetDefaultConfigurationPath()
 {
+#ifdef __PROSPERO__
+    /* PS5 title: /app0 is read-only; /download0 is the title's persistent
+     * writable storage (param.json downloadDataSize > 0). The configuration,
+     * the baked IMG_TEX.BIN and the saves all live under this folder. */
+    return std::filesystem::path("/download0/MikuPan") / "mikupan.ini";
+#endif
+
     char *base = SDL_GetPrefPath("Mikompilation", "MikuPan");
     if (base != nullptr && base[0] != '\0')
     {
