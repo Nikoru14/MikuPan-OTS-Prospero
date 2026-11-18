@@ -483,3 +483,184 @@ extern "C" bool MikuPan_Ps5ShouldPause(void)
     }
     return paused;
 }
+
+/* ------------------------------------------------------- sampling profiler */
+/* Opt-in (/data/MikuPan/profile.on at launch): a helper thread interrupts the
+ * game's main thread about every millisecond; the handler records where it is
+ * and the frame-pointer chain above it. At the end of each frame the samples
+ * are kept only if the frame was slow, and every few seconds the hottest
+ * addresses go to profile.txt, to be matched to the linked ELF offline. */
+
+#include <atomic>
+#include <unordered_map>
+#include <vector>
+
+namespace
+{
+constexpr int kProfDepth = 12;
+constexpr int kProfFrameSamples = 512;
+
+struct ProfSample
+{
+    uintptr_t pc[kProfDepth];
+    int depth;
+};
+
+ProfSample g_prof_frame[kProfFrameSamples];
+std::atomic<int> g_prof_count{0};
+std::atomic<bool> g_prof_running{false};
+pthread_t g_prof_main;
+std::unordered_map<uintptr_t, unsigned> g_prof_self;
+std::unordered_map<uintptr_t, unsigned> g_prof_incl;
+unsigned g_prof_samples = 0;
+unsigned g_prof_slow_frames = 0;
+double g_prof_slow_ms = 0.0;
+Uint64 g_prof_last_write = 0;
+unsigned g_prof_written_samples = 0;
+
+void ProfHandler(int, siginfo_t *, void *context)
+{
+    const int index = g_prof_count.fetch_add(1, std::memory_order_relaxed);
+    if (index >= kProfFrameSamples)
+    {
+        return;
+    }
+    const auto *uc = static_cast<const ucontext_t *>(context);
+    ProfSample &sample = g_prof_frame[index];
+    sample.pc[0] = (uintptr_t)uc->uc_mcontext.mc_rip;
+    sample.depth = 1;
+    const uintptr_t stack = (uintptr_t)uc->uc_mcontext.mc_rsp;
+    uintptr_t frame = (uintptr_t)uc->uc_mcontext.mc_rbp;
+    while (sample.depth < kProfDepth)
+    {
+        if (frame == 0 || (frame & 7) != 0 || frame < stack || frame - stack > (8u << 20))
+        {
+            break;
+        }
+        const uintptr_t *slot = reinterpret_cast<const uintptr_t *>(frame);
+        if (slot[1] == 0)
+        {
+            break;
+        }
+        sample.pc[sample.depth++] = slot[1];
+        if (slot[0] <= frame)
+        {
+            break;
+        }
+        frame = slot[0];
+    }
+}
+
+void *ProfTicker(void *)
+{
+    while (g_prof_running.load())
+    {
+        sceKernelUsleep(1000);
+        pthread_kill(g_prof_main, SIGPROF);
+    }
+    return nullptr;
+}
+
+void ProfWrite()
+{
+    char path[512];
+    std::snprintf(path, sizeof(path), "%sprofile.txt", MikuPan_GetPs5UserDirectory());
+    FILE *file = std::fopen(path, "w");
+    if (file == nullptr)
+    {
+        return;
+    }
+    std::fprintf(file, "MikuPan PS5 profile: %u samples from %u slow frames (avg %.1f ms)\n",
+                 g_prof_samples, g_prof_slow_frames,
+                 g_prof_slow_frames ? g_prof_slow_ms / g_prof_slow_frames : 0.0);
+    std::fprintf(file, "anchor MikuPan_Ps5Notify = %p\n", (void *)&MikuPan_Ps5Notify);
+    auto dump = [file](const char *title, const std::unordered_map<uintptr_t, unsigned> &map) {
+        std::vector<std::pair<unsigned, uintptr_t>> sorted;
+        sorted.reserve(map.size());
+        for (const auto &entry : map)
+        {
+            sorted.emplace_back(entry.second, entry.first);
+        }
+        std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+        std::fprintf(file, "%s\n", title);
+        for (size_t i = 0; i < sorted.size() && i < 150; i++)
+        {
+            std::fprintf(file, "%u %#llx\n", sorted[i].first, (unsigned long long)sorted[i].second);
+        }
+    };
+    dump("self", g_prof_self);
+    dump("inclusive", g_prof_incl);
+    std::fclose(file);
+}
+} // namespace
+
+extern "C" void MikuPan_Ps5ProfilerStart(void)
+{
+    char flag[512];
+    std::snprintf(flag, sizeof(flag), "%sprofile.on", MikuPan_GetPs5UserDirectory());
+    if (FILE *file = std::fopen(flag, "rb"))
+    {
+        std::fclose(file);
+    }
+    else
+    {
+        return;
+    }
+    struct sigaction action = {};
+    action.sa_sigaction = ProfHandler;
+    action.sa_flags = SA_SIGINFO | SA_RESTART;
+    sigemptyset(&action.sa_mask);
+    sigaction(SIGPROF, &action, nullptr);
+    g_prof_main = pthread_self();
+    g_prof_running = true;
+    pthread_t ticker;
+    if (pthread_create(&ticker, nullptr, ProfTicker, nullptr) == 0)
+    {
+        pthread_detach(ticker);
+        info_log("PS5: sampling profiler on (profile.on found); slow frames go to profile.txt");
+    }
+    else
+    {
+        g_prof_running = false;
+    }
+}
+
+extern "C" void MikuPan_Ps5ProfilerFrame(double frame_ms)
+{
+    if (!g_prof_running.load())
+    {
+        return;
+    }
+    const int count = std::min(g_prof_count.exchange(0), kProfFrameSamples);
+    /* Anything under ~52 fps: the doorway dips are ~24 ms frames */
+    if (frame_ms > 19.0 && count > 0)
+    {
+        g_prof_slow_frames++;
+        g_prof_slow_ms += frame_ms;
+        for (int i = 0; i < count; i++)
+        {
+            const ProfSample &sample = g_prof_frame[i];
+            g_prof_samples++;
+            g_prof_self[sample.pc[0]]++;
+            for (int d = 0; d < sample.depth; d++)
+            {
+                bool seen = false;
+                for (int e = 0; e < d && !seen; e++)
+                {
+                    seen = sample.pc[e] == sample.pc[d];
+                }
+                if (!seen)
+                {
+                    g_prof_incl[sample.pc[d]]++;
+                }
+            }
+        }
+    }
+    const Uint64 now = SDL_GetTicks();
+    if (g_prof_samples != g_prof_written_samples && now - g_prof_last_write > 5000)
+    {
+        g_prof_last_write = now;
+        g_prof_written_samples = g_prof_samples;
+        ProfWrite();
+    }
+}

@@ -119,6 +119,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     MikuPan_TryInitializeGame();
 
     MikuPan_FrameLimiter_Init(&frame_limiter, 60.0f);
+#ifdef __PROSPERO__
+    MikuPan_Ps5ProfilerStart();
+#endif
 
     return result;
 }
@@ -187,6 +190,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             {
                 info_log("PS5: slow frame %.1f ms", ms);
             }
+            MikuPan_Ps5ProfilerFrame(ms);
         }
         last_frame = now;
     }

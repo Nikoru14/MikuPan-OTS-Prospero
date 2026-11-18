@@ -27,6 +27,11 @@ void MikuPan_Ps5Notify(const char *fmt, ...) __attribute__((format(printf, 1, 2)
 /// system categories. Call before SDL_Init.
 void MikuPan_Ps5ForwardSdlLog(void);
 
+/// The opt-in sampling profiler (/data/MikuPan/profile.on at launch): start
+/// it from the main thread, and report each frame's duration to it.
+void MikuPan_Ps5ProfilerStart(void);
+void MikuPan_Ps5ProfilerFrame(double frame_ms);
+
 /// Whether the game should stay paused this frame: true while the console's
 /// home screen or a system menu has the controller. Pauses the game's audio
 /// on the way in and resumes it on the way out. Call once a frame.
