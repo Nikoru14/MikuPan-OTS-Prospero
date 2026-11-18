@@ -129,6 +129,11 @@ function(mikupan_ps5_title target)
             "${MIKUPAN_PS5_VULKAN_DIR}/.deps/native/radv-release/include")
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp"
             PROPERTIES COMPILE_DEFINITIONS "MIKUPAN_PS5_TITLE_NAME=\"${MIKUPAN_PS5_TITLE_NAME}\"")
+    # In an optimised build the game itself gets -O1 with the guards that
+    # code decompiled from the PS2 relies on (the desktop release build has
+    # known issues); the libraries keep the build type's -O2.
+    target_compile_options(${target} PRIVATE
+            $<$<NOT:$<CONFIG:Debug>>:-O1 -fno-strict-aliasing -fwrapv -fno-delete-null-pointer-checks>)
     set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
             "${native}/app-symbols.map" "${native}/ps5-pie.ld"
             "${MIKUPAN_PS5_DIR}/tools/link-title.sh"

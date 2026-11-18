@@ -32,6 +32,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <dirent.h>
+#include <unordered_map>
 #include <strings.h>
 #include <sys/stat.h>
 #endif
@@ -107,8 +108,8 @@ static std::filesystem::path MikuPan_GetApplicationBasePath()
 static constexpr const char *kPs5DataFolder = "/data/MikuPan/";
 static constexpr const char *kPs5TitleStorageFolder = "/download0/MikuPan/";
 
-/* A file's size by opening it, or -1. Logs what fopen and stat said when the
- * file cannot be opened. */
+/* A file's size by opening it, or -1. Quiet: the music streamer asks for
+ * loose files that only exist inside the archive many times a second. */
 static long long MikuPan_Ps5FileSize(const std::string &path)
 {
     FILE *file = std::fopen(path.c_str(), "rb");
@@ -122,14 +123,6 @@ static long long MikuPan_Ps5FileSize(const std::string &path)
         std::fclose(file);
         return size;
     }
-    const int open_error = errno;
-    struct stat info = {};
-    errno = 0;
-    const int stat_result = ::stat(path.c_str(), &info);
-    const int stat_error = errno;
-    info_log("PS5: %s: fopen failed (errno %d %s); stat = %d (errno %d), mode 0%o, size %lld",
-             path.c_str(), open_error, std::strerror(open_error), stat_result, stat_error,
-             (unsigned)info.st_mode, (long long)info.st_size);
     return -1;
 }
 
@@ -172,7 +165,34 @@ extern "C" bool MikuPan_Ps5PathExists(const char *path)
 /* The path with each part spelt as the folder spells it, ignoring case: the
  * console's /data is case-sensitive, and disc files are often copied as
  * img_hd.bin. A part that matches nothing keeps its own spelling. */
+static std::string MikuPan_Ps5ResolveCaseUncached(const std::string &path);
+
+/* Each path is matched once: data files are looked up again and again (the
+ * music streamer on every read), and the folders do not change spelling
+ * while the game runs. */
 static std::string MikuPan_Ps5ResolveCase(const std::string &path)
+{
+    static std::mutex mutex;
+    static std::unordered_map<std::string, std::string> resolved;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const auto found = resolved.find(path);
+        if (found != resolved.end())
+        {
+            return found->second;
+        }
+    }
+    std::string result = MikuPan_Ps5ResolveCaseUncached(path);
+    std::lock_guard<std::mutex> lock(mutex);
+    if (resolved.size() > 4096)
+    {
+        resolved.clear();
+    }
+    resolved.emplace(path, result);
+    return result;
+}
+
+static std::string MikuPan_Ps5ResolveCaseUncached(const std::string &path)
 {
     if (MikuPan_Ps5PathExists(path.c_str()))
     {
@@ -338,18 +358,6 @@ static std::filesystem::path MikuPan_GetDataRoot()
             MikuPan_Ps5ResolveCase(std::string(kPs5DataFolder) + "IMG_HD.BIN");
         if (MikuPan_FsExists(img_hd, ec))
         {
-            /* Once: does libc++'s stat-based std::filesystem see the file? */
-            static bool checked = false;
-            if (!checked)
-            {
-                checked = true;
-                std::error_code fs_error;
-                const uintmax_t fs_size = std::filesystem::file_size(img_hd, fs_error);
-                info_log("PS5: std::filesystem::file_size(%s) = %llu (%s); opened: %lld bytes",
-                         img_hd.c_str(), (unsigned long long)fs_size,
-                         fs_error ? fs_error.message().c_str() : "ok",
-                         MikuPan_Ps5FileSize(img_hd));
-            }
             return data_folder;
         }
         static bool listed = false;
