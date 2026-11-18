@@ -39,7 +39,5 @@ where; please include it and `mikupan.log` when reporting a problem.
 
 ## Known issues
 
-- The candles in the Burial Room show green flames outside the puzzle view.
-  The PC build does the same; it is not specific to the PS5.
 - There is no on-screen keyboard and no file browser, so PS2 save transfer is
   not available on the console.
