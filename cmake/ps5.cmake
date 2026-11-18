@@ -93,6 +93,10 @@ set(MIKUPAN_PS5_CONCEPT_ID "39390" CACHE STRING "PS5 concept ID: five digits")
 set(MIKUPAN_PS5_CONTENT_SUFFIX "MIKUPANPROSPERO1" CACHE STRING
         "Last part of the PS5 content ID: 16 characters A-Z or 0-9")
 set(MIKUPAN_PS5_TITLE_NAME "MikuPan PS5" CACHE STRING "Name shown on the PS5 home screen")
+set(MIKUPAN_PS5_BACKGROUND "" CACHE FILEPATH
+        "Optional picture (PNG/JPEG, 16:9) for the home screen and the launch screen; not part of the repository")
+set(MIKUPAN_PS5_LAUNCH_BACKGROUND "" CACHE FILEPATH
+        "Optional different picture for the launch screen (defaults to MIKUPAN_PS5_BACKGROUND)")
 set(MIKUPAN_PS5_BUILD_LABEL "MikuPanPS5-dev" CACHE STRING
         "Build name on the title screen, in the start-up notification and the log")
 set(MIKUPAN_PS5_NATIVE_TOOL "${MIKUPAN_PS5_VULKAN_DIR}/build/runtime-shim/ps5-native-tool"
@@ -159,6 +163,42 @@ function(mikupan_ps5_title target)
     set(param "${CMAKE_BINARY_DIR}/ps5/param.json")
     configure_file("${MIKUPAN_PS5_DIR}/sce_sys/param.json.in" "${param}" @ONLY)
 
+    # Home screen art: pic0.dds behind the title when it is selected,
+    # pic1.dds while it starts; 3840x2160 BC7 DDS made from a picture the
+    # builder supplies (ps5/tools/png-to-title-dds.py, needs numpy and Pillow).
+    set(background_copies)
+    if(MIKUPAN_PS5_BACKGROUND)
+        set(launch "${MIKUPAN_PS5_LAUNCH_BACKGROUND}")
+        if(NOT launch)
+            set(launch "${MIKUPAN_PS5_BACKGROUND}")
+        endif()
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        set(art_outputs)
+        foreach(pair "pic0|${MIKUPAN_PS5_BACKGROUND}" "pic1|${launch}")
+            string(REPLACE "|" ";" pair "${pair}")
+            list(GET pair 0 name)
+            list(GET pair 1 picture)
+            if(NOT EXISTS "${picture}")
+                message(FATAL_ERROR "PS5 background picture does not exist: ${picture}")
+            endif()
+            set(dds "${CMAKE_BINARY_DIR}/ps5/${name}.dds")
+            add_custom_command(OUTPUT "${dds}"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/ps5"
+                    COMMAND Python3::Interpreter "${MIKUPAN_PS5_DIR}/tools/png-to-title-dds.py"
+                            "${picture}" "${dds}"
+                    DEPENDS "${picture}" "${MIKUPAN_PS5_DIR}/tools/png-to-title-dds.py"
+                    COMMENT "Converting ${picture} to ${name}.dds"
+                    VERBATIM)
+            list(APPEND art_outputs "${dds}")
+            list(APPEND background_copies
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dds}"
+                            "${app}/sce_sys/${name}.dds")
+        endforeach()
+        add_custom_target(mikupan_ps5_art DEPENDS ${art_outputs})
+        add_dependencies(${target} mikupan_ps5_art)
+        message(STATUS "MikuPan: PS5 home screen art from ${MIKUPAN_PS5_BACKGROUND}")
+    endif()
+
     set(tool "${MIKUPAN_PS5_NATIVE_TOOL}")
     add_custom_command(TARGET ${target} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -177,6 +217,7 @@ function(mikupan_ps5_title target)
                     "${app}/sce_sys/param.json"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${MIKUPAN_PS5_DIR}/sce_sys/icon0.png" "${app}/sce_sys/icon0.png"
+            ${background_copies}
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${MIKUPAN_PS5_RUNTIME_MODULE}" "${app}/sce_module/libc.prx"
             COMMAND ${CMAKE_COMMAND} -E copy_directory

@@ -267,6 +267,8 @@ progress as PS5 notifications, including which folder it uses.
 | `MIKUPAN_PS5_CONCEPT_ID` | `39390` | Five digits |
 | `MIKUPAN_PS5_CONTENT_SUFFIX` | `MIKUPANPROSPERO1` | 16 characters `A-Z` or `0-9` |
 | `MIKUPAN_PS5_TITLE_NAME` | `MikuPan PS5` | Name on the home screen |
+| `MIKUPAN_PS5_BACKGROUND` | (none) | A 16:9 picture (PNG or JPEG) for the home screen and launch screen; converted to `sce_sys/pic0.dds` and `pic1.dds` (3840x2160 BC7). Needs Python with numpy and Pillow. Use art you may redistribute if you share the title folder |
+| `MIKUPAN_PS5_LAUNCH_BACKGROUND` | the background | A different picture for the launch screen |
 | `MIKUPAN_PS5_BUILD_LABEL` | `MikuPanPS5-dev` | Build name on the title screen, in the start-up notification and the log |
 
 See `ps5/NOTICE.md` for where the PS5 support files come from.

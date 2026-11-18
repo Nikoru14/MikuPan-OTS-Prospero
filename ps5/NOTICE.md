@@ -49,6 +49,10 @@ From [PS5_Dusklight](https://github.com/griches/PS5_Dusklight) at commit
   initializers run in source order, unchanged.
 - `tools/link-title.sh` (MIT): adapted from its link script to link MikuPan
   with PS5_Vulkan's recipe.
+- `tools/png-to-title-dds.py` (GPL-3.0-or-later, Mihawk-99, from PS5
+  RetroArch's `tools/make-title-art.py`): converts a picture to the home
+  screen art the console shows (3840x2160 BC7 DDS), unchanged. It is a build
+  tool; nothing of it is in the title.
 
 ## Used at build time, not in this repository
 
