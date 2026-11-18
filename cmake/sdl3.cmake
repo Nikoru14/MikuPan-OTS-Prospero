@@ -5,12 +5,15 @@ if(PS5)
     # registered with SDL and built when the toolchain says PS5.
     # sdl-gpu-conformance.patch: SDL_GPU takes RADV, which reports no Vulkan
     # conformance version on the console yet.
+    # sdl-ps5-timer.patch: SDL's performance counter reads the CPU's time
+    # stamp counter instead of clock_gettime, a system call on the console.
     # Each is applied once: the check skips a tree that already has it.
     set(MIKUPAN_SDL_PATCH PATCH_COMMAND
             sh -c "for p in \"$@\"; do git apply --reverse --check \"$p\" 2>/dev/null || git apply --whitespace=nowarn \"$p\" || exit 1; done"
             sh
             "${CMAKE_SOURCE_DIR}/ps5/patches/sdl.patch"
-            "${CMAKE_SOURCE_DIR}/ps5/patches/sdl-gpu-conformance.patch")
+            "${CMAKE_SOURCE_DIR}/ps5/patches/sdl-gpu-conformance.patch"
+            "${CMAKE_SOURCE_DIR}/ps5/patches/sdl-ps5-timer.patch")
 else()
     set(MIKUPAN_SDL_PATCH "")
 endif()

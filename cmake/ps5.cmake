@@ -93,6 +93,8 @@ set(MIKUPAN_PS5_CONCEPT_ID "39390" CACHE STRING "PS5 concept ID: five digits")
 set(MIKUPAN_PS5_CONTENT_SUFFIX "MIKUPANPROSPERO1" CACHE STRING
         "Last part of the PS5 content ID: 16 characters A-Z or 0-9")
 set(MIKUPAN_PS5_TITLE_NAME "MikuPan PS5" CACHE STRING "Name shown on the PS5 home screen")
+set(MIKUPAN_PS5_BUILD_LABEL "MikuPanPS5-dev" CACHE STRING
+        "Build name on the title screen, in the start-up notification and the log")
 set(MIKUPAN_PS5_NATIVE_TOOL "${MIKUPAN_PS5_VULKAN_DIR}/build/runtime-shim/ps5-native-tool"
         CACHE FILEPATH "ps5-native-tool (PS5_Vulkan's tools/rebuild-libc.sh builds it)")
 set(MIKUPAN_PS5_RUNTIME_MODULE "${MIKUPAN_PS5_VULKAN_DIR}/runtime/libc.prx" CACHE FILEPATH
@@ -129,6 +131,8 @@ function(mikupan_ps5_title target)
             "${MIKUPAN_PS5_VULKAN_DIR}/.deps/native/radv-release/include")
     set_source_files_properties("${CMAKE_SOURCE_DIR}/src/mikupan/mikupan_ps5.cpp"
             PROPERTIES COMPILE_DEFINITIONS "MIKUPAN_PS5_TITLE_NAME=\"${MIKUPAN_PS5_TITLE_NAME}\"")
+    target_compile_definitions(${target} PRIVATE
+            "MIKUPAN_PS5_BUILD_LABEL=\"${MIKUPAN_PS5_BUILD_LABEL}\"")
     # In an optimised build the game itself gets -O1 with the guards that
     # code decompiled from the PS2 relies on (the desktop release build has
     # known issues); the libraries keep the build type's -O2.

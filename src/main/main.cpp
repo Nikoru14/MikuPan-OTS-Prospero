@@ -101,7 +101,7 @@ static int MikuPan_TryInitializeGame(void)
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
 #ifdef __PROSPERO__
-    MikuPan_Ps5Notify("MikuPan starting. Log: %smikupan.log",
+    MikuPan_Ps5Notify("%s starting. Log: %smikupan.log", MIKUPAN_PS5_BUILD_LABEL,
                       MikuPan_GetPs5UserDirectory());
 #endif
 

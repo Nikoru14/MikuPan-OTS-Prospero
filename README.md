@@ -267,6 +267,7 @@ progress as PS5 notifications, including which folder it uses.
 | `MIKUPAN_PS5_CONCEPT_ID` | `39390` | Five digits |
 | `MIKUPAN_PS5_CONTENT_SUFFIX` | `MIKUPANPROSPERO1` | 16 characters `A-Z` or `0-9` |
 | `MIKUPAN_PS5_TITLE_NAME` | `MikuPan PS5` | Name on the home screen |
+| `MIKUPAN_PS5_BUILD_LABEL` | `MikuPanPS5-dev` | Build name on the title screen, in the start-up notification and the log |
 
 See `ps5/NOTICE.md` for where the PS5 support files come from.
 
