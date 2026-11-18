@@ -427,3 +427,59 @@ extern "C" void MikuPan_Ps5InstallCrashHandler(void)
     }
     std::set_terminate(TerminateHandler);
 }
+
+/* ------------------------------------------------------- home screen pause */
+
+#include <SDL3/SDL_audio.h>
+#include <SDL3/SDL_timer.h>
+
+extern SDL_AudioDeviceID audio_dev; /* sdk/sce/libsd.cpp: the game's sound */
+extern "C" void MikuPan_MovieSetAudioPaused(int paused);
+
+namespace
+{
+void SetGameAudioPaused(bool paused)
+{
+    if (audio_dev != 0)
+    {
+        if (paused)
+        {
+            SDL_PauseAudioDevice(audio_dev);
+        }
+        else
+        {
+            SDL_ResumeAudioDevice(audio_dev);
+        }
+    }
+    MikuPan_MovieSetAudioPaused(paused ? 1 : 0);
+}
+} // namespace
+
+extern "C" bool MikuPan_Ps5ShouldPause(void)
+{
+    /* The console marks each controller reading it keeps for itself (the
+     * home screen, the control centre, a system dialog) with
+     * PAD_INTERCEPTED; the latest reading says who has the controller now.
+     * SDL's controller driver polled the pads while the events were pumped. */
+    static bool paused = false;
+    const struct pad_reading *readings = nullptr;
+    const int count = pad_player_readings(0, &readings);
+    bool shell_has_pad = paused;
+    if (count > 0 && readings != nullptr)
+    {
+        shell_has_pad = (readings[count - 1].buttons & PAD_INTERCEPTED) != 0;
+    }
+
+    if (shell_has_pad != paused)
+    {
+        paused = shell_has_pad;
+        SetGameAudioPaused(paused);
+        info_log("PS5: %s", paused ? "the system has the controller: game paused"
+                                   : "back in the game: resumed");
+    }
+    if (paused)
+    {
+        SDL_Delay(50);
+    }
+    return paused;
+}

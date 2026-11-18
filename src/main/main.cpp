@@ -33,6 +33,9 @@
 #include <sce/libpad.h>
 #include <mikupan/mikupan_framelimiter.h>
 #include "mikupan/mikupan_ps5.h"
+#ifdef __PROSPERO__
+#include "mikupan/debug/mikupan_logging_c.h"
+#endif
 
 static int mikupan_game_initialized = 0;
 static int mikupan_missing_data_prompted = 0;
@@ -148,8 +151,46 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     return SDL_APP_CONTINUE;
 }
 
+#ifdef __PROSPERO__
+static Uint64 mikupan_ps5_last_frame_ns = 0;
+#endif
+
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
+#ifdef __PROSPERO__
+    /* Like a console game at the home screen: no updates, no frames, no
+     * sound until the player is back. */
+    {
+        static bool was_paused = false;
+        const bool paused = mikupan_game_initialized && MikuPan_Ps5ShouldPause();
+        if (paused)
+        {
+            was_paused = true;
+            return SDL_APP_CONTINUE;
+        }
+        if (was_paused)
+        {
+            was_paused = false;
+            MikuPan_FrameLimiter_Reset(&frame_limiter);
+            mikupan_ps5_last_frame_ns = 0; /* the pause is not a slow frame */
+        }
+    }
+    /* A frame that took much longer than 1/60 s (the limiter's wait
+     * included): logged, so the files loaded around it show what it was. */
+    {
+        Uint64 &last_frame = mikupan_ps5_last_frame_ns;
+        const Uint64 now = SDL_GetTicksNS();
+        if (last_frame != 0 && mikupan_game_initialized)
+        {
+            const double ms = (double)(now - last_frame) / 1e6;
+            if (ms > 25.0)
+            {
+                info_log("PS5: slow frame %.1f ms", ms);
+            }
+        }
+        last_frame = now;
+    }
+#endif
     MikuPan_ServiceMissingDataFolderDialog();
 
     MikuPan_Clear();

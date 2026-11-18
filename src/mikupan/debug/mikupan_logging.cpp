@@ -110,7 +110,10 @@ std::shared_ptr<spdlog::logger> CreateLogger()
     logger->set_pattern(kPattern);
     logger->set_level(spdlog::level::info);
 #ifdef __PROSPERO__
-    logger->flush_on(spdlog::level::info);
+    /* Written out on warnings and once a second (below), not on every line:
+     * a room load logs dozens of lines, each a write to the console's disk
+     * on the game's thread. A crash still has crash.log. */
+    logger->flush_on(spdlog::level::warn);
 #else
     logger->flush_on(spdlog::level::warn);
 #endif
@@ -191,6 +194,14 @@ std::shared_ptr<spdlog::logger> GetLogger()
     {
         g_logger = CreateLogger();
         spdlog::set_default_logger(g_logger);
+#ifdef __PROSPERO__
+        static bool flushing = false;
+        if (!flushing)
+        {
+            flushing = true;
+            spdlog::flush_every(std::chrono::seconds(1));
+        }
+#endif
         spdlog::cfg::load_env_levels();
         spdlog::apply_logger_env_levels(g_logger);
     }

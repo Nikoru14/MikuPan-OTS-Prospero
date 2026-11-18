@@ -27,6 +27,11 @@ void MikuPan_Ps5Notify(const char *fmt, ...) __attribute__((format(printf, 1, 2)
 /// system categories. Call before SDL_Init.
 void MikuPan_Ps5ForwardSdlLog(void);
 
+/// Whether the game should stay paused this frame: true while the console's
+/// home screen or a system menu has the controller. Pauses the game's audio
+/// on the way in and resumes it on the way out. Call once a frame.
+bool MikuPan_Ps5ShouldPause(void);
+
 /// Walks through what SDL_GPU's Vulkan backend needs from RADV (an
 /// instance, a GPU, its features and extensions, a graphics queue, the
 /// display) and logs each answer, to say why SDL_GPU refused Vulkan.
