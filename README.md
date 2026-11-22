@@ -1,3 +1,9 @@
+> [!IMPORTANT]
+> **This repository has moved to [Nikoru14/MikuPanOTS](https://github.com/Nikoru14/MikuPanOTS).**
+> The over-the-shoulder camera and the PlayStation 5 build are now developed
+> together there, and new releases -- for PC and PS5 -- are published there.
+> This repository is no longer updated.
+
 # What is MikuPan?
 MikuPan is an in progress port of Fatal Frame 1 PS2 to PC running natively, no emulation. Still very early work.
 
